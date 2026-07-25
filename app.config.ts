@@ -30,10 +30,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             ITSAppUsesNonExemptEncryption: false,
             NSLocationWhenInUseUsageDescription:
                 "Groship Saathi uses your location to pin shops you onboard and to share your live location with your field manager while you're on your beat.",
-            NSCameraUsageDescription:
-                "Groship Saathi uses the camera to capture a storefront photo during onboarding.",
-            NSPhotoLibraryUsageDescription:
-                "Groship Saathi lets you attach a storefront photo from your library during onboarding.",
+            NSCameraUsageDescription: "Groship Saathi uses the camera to capture a storefront photo during onboarding.",
+            NSPhotoLibraryUsageDescription: "Groship Saathi lets you attach a storefront photo from your library during onboarding.",
             LSApplicationQueriesSchemes: ["whatsapp"],
         },
     },
@@ -44,11 +42,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             backgroundColor: "#1A2E05",
         },
         edgeToEdgeEnabled: true,
-        permissions: [
-            "android.permission.ACCESS_COARSE_LOCATION",
-            "android.permission.ACCESS_FINE_LOCATION",
-            "android.permission.CAMERA",
-        ],
+        permissions: ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION", "android.permission.CAMERA"],
     },
     plugins: [
         "expo-secure-store",
@@ -64,10 +58,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             {
                 // These config-plugin props are the source of truth for the iOS
                 // usage descriptions in a prebuild / dev build / EAS build.
-                photosPermission:
-                    "Groship Saathi lets you attach a storefront photo from your library during onboarding.",
-                cameraPermission:
-                    "Groship Saathi uses the camera to capture a storefront photo during onboarding.",
+                photosPermission: "Groship Saathi lets you attach a storefront photo from your library during onboarding.",
+                cameraPermission: "Groship Saathi uses the camera to capture a storefront photo during onboarding.",
             },
         ],
         "expo-font",
@@ -76,5 +68,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         // Read in src/config/env.ts. EXPO_PUBLIC_* vars are inlined at build time;
         // we also mirror it here so `expo-constants` can surface it consistently.
         apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000/api/v1",
+        eas: {
+            projectId: "c008bef1-ae9c-467a-a77e-9e4b5e9fd5ef",
+        },
     },
 });
