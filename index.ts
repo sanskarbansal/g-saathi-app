@@ -1,0 +1,9 @@
+// Gesture handler must be imported before anything else in the entry file.
+import "react-native-gesture-handler";
+import { registerRootComponent } from "expo";
+
+import App from "./App";
+
+// registerRootComponent calls AppRegistry.registerComponent('main', () => App)
+// and ensures the environment is set up appropriately for Expo Go and native builds.
+registerRootComponent(App);
