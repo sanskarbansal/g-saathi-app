@@ -82,7 +82,18 @@ async function flush(): Promise<void> {
             if (!current) continue;
 
             try {
-                await fieldApi.createOnboarding(current.input);
+                const res = await fieldApi.createOnboarding(current.input);
+                // Now that the store exists, upload the storefront photo captured
+                // offline (best-effort — the store is already created, and the photo
+                // is optional, so a failed upload must not keep the item queued or
+                // trigger a duplicate create on the next pass).
+                if (current.localPhotoUri) {
+                    try {
+                        await fieldApi.uploadStorefrontPhoto(res.onboarding.id, current.localPhotoUri);
+                    } catch {
+                        /* leave the store synced; the photo simply won't appear */
+                    }
+                }
                 // Success (created OR idempotent replay) → drop from queue.
                 commit(items.filter((i) => i.clientId !== clientId));
                 anySynced = true;

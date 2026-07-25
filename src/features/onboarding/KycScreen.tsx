@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { CreditCard, FileText, Warehouse, Check } from "lucide-react-native";
 
 import {
+    fieldApi,
     isApiError,
     qk,
     type CreateOnboardingInput,
@@ -117,6 +118,15 @@ export function KycScreen({ navigation }: AddKiranaScreenProps<"Kyc">) {
                         });
                         navigation.navigate("Success");
                         return;
+                    }
+
+                    // Best-effort: upload the captured storefront photo now that we have
+                    // the onboarding id. Non-blocking — the store already exists and the
+                    // photo is optional, so a failure here never interrupts the flow.
+                    if (draft.photo?.uri) {
+                        void fieldApi
+                            .uploadStorefrontPhoto(outcome.result.onboarding.id, draft.photo.uri)
+                            .catch(() => {});
                     }
 
                     const updated = await refreshAgent();

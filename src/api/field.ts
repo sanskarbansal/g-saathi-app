@@ -65,6 +65,36 @@ export const fieldApi = {
     },
 
     /**
+     * POST /field/onboardings/:id/photo — upload the storefront photo captured
+     * during onboarding (multipart/form-data, field name "file"). Called right
+     * after the create succeeds, and again when an offline create later syncs.
+     * The backend stores the image and persists its URL on the onboarding, which
+     * is what the admin / field-force console then displays.
+     */
+    uploadStorefrontPhoto(id: string, photoUri: string): Promise<UpdateOnboardingResult> {
+        const name = photoUri.split("/").pop() || "storefront.jpg";
+        const lower = name.toLowerCase();
+        const type = lower.endsWith(".png")
+            ? "image/png"
+            : lower.endsWith(".webp")
+              ? "image/webp"
+              : "image/jpeg";
+
+        const form = new FormData();
+        // React Native's FormData accepts a { uri, name, type } file part; the DOM
+        // FormData typings don't, so cast for the multipart upload.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        form.append("file", { uri: photoUri, name, type } as any);
+
+        return unwrap<UpdateOnboardingResult>(
+            apiClient.post(`/field/onboardings/${id}/photo`, form, {
+                headers: { "Content-Type": "multipart/form-data" },
+                timeout: 60000,
+            }),
+        );
+    },
+
+    /**
      * POST /field/onboardings/:id/order — attribute a real Groship order to the
      * shop by its order NUMBER. No amount: the backend verifies the order and
      * credits its real total. Errors: 404 not found, 400 not-paid, 403 phone
