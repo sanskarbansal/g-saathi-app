@@ -1,5 +1,6 @@
 import React from "react";
 import {
+    Platform,
     RefreshControl,
     ScrollView,
     StyleSheet,
@@ -27,6 +28,10 @@ interface ScreenProps {
 /**
  * Standard screen frame: safe-area aware, brand background, optional scroll +
  * pull-to-refresh. Content padding uses the token scale.
+ *
+ * Scrollable screens auto-inset for the keyboard on iOS so a focused field at
+ * the bottom of a form stays visible; on Android the activity window resizes
+ * (adjustResize) and the ScrollView scrolls the field into view.
  */
 export function Screen({
     children,
@@ -51,6 +56,8 @@ export function Screen({
                     style={styles.flex}
                     contentContainerStyle={[pad, contentContainerStyle]}
                     keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
                     showsVerticalScrollIndicator={false}
                     refreshControl={
                         onRefresh ? (

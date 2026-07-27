@@ -30,8 +30,9 @@ export function BeatRow({
 
     return (
         <Card onPress={onPress} style={styles.card}>
-            <View style={styles.row}>
-                <IconCircle color={item.visited ? t.colors.success : t.colors.tertiary}>
+            {/* Identity: who + how to reach them */}
+            <View style={styles.top}>
+                <IconCircle size={42} color={item.visited ? t.colors.success : t.colors.tertiary}>
                     {item.visited ? (
                         <CheckCircle2 size={20} color={t.colors.white} />
                     ) : (
@@ -47,28 +48,42 @@ export function BeatRow({
                             {prettyPhone(item.phone)}
                         </AppText>
                     ) : null}
-                    <View style={styles.metaRow}>
-                        <Clock size={12} color={t.colors.ink400} />
-                        <AppText variant="caption" muted style={styles.meta}>
-                            {lastVisit}
+                </View>
+                {item.phone ? <CallButton phone={item.phone} size={40} /> : null}
+            </View>
+
+            {/* Status + primary action, separated for breathing room */}
+            <View style={[styles.footer, { borderTopColor: t.colors.border }]}>
+                <View style={styles.meta}>
+                    <Clock size={13} color={t.colors.ink400} />
+                    <AppText variant="caption" muted numberOfLines={1} style={styles.metaText}>
+                        {lastVisit}
+                    </AppText>
+                    {item.reason === "planned" ? (
+                        <Pill tone="info" size="sm" label={tr("beat.plannedChip")} />
+                    ) : null}
+                </View>
+                {item.visited ? (
+                    <Pill
+                        tone="success"
+                        size="sm"
+                        label={tr("beat.visitedChip")}
+                        icon={<CheckCircle2 size={12} color="#166534" />}
+                    />
+                ) : (
+                    <Pressable
+                        onPress={onCheckIn}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                            styles.checkBtn,
+                            { backgroundColor: t.colors.primary, opacity: pressed ? 0.85 : 1 },
+                        ]}
+                    >
+                        <AppText variant="label" onDark>
+                            {tr("beat.checkIn")}
                         </AppText>
-                        {item.reason === "planned" ? (
-                            <Pill tone="info" size="sm" label={tr("beat.plannedChip")} />
-                        ) : null}
-                    </View>
-                </View>
-                <View style={styles.actions}>
-                    {item.phone ? <CallButton phone={item.phone} size={38} /> : null}
-                    {item.visited ? (
-                        <Pill tone="success" size="sm" label={tr("beat.visitedChip")} />
-                    ) : (
-                        <Pressable onPress={onCheckIn} style={[styles.checkBtn, { backgroundColor: t.colors.primary }]}>
-                            <AppText variant="caption" onDark>
-                                {tr("beat.checkIn")}
-                            </AppText>
-                        </Pressable>
-                    )}
-                </View>
+                    </Pressable>
+                )}
             </View>
         </Card>
     );
@@ -76,10 +91,17 @@ export function BeatRow({
 
 const styles = StyleSheet.create({
     card: { marginBottom: 12 },
-    row: { flexDirection: "row", alignItems: "center" },
-    body: { flex: 1, marginLeft: 12 },
-    metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
-    meta: { marginRight: 2 },
-    actions: { flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8 },
-    checkBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
+    top: { flexDirection: "row", alignItems: "center" },
+    body: { flex: 1, marginLeft: 12, marginRight: 8 },
+    footer: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginTop: 14,
+        paddingTop: 12,
+        borderTopWidth: StyleSheet.hairlineWidth,
+    },
+    meta: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, marginRight: 12 },
+    metaText: { flexShrink: 1 },
+    checkBtn: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 10 },
 });

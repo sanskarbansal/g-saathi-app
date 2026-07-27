@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { MapPin, Navigation, X, CheckCircle2, AlertTriangle } from "lucide-react-native";
 
 import { isApiError, type VisitOutcome } from "@/api";
 import { useTheme } from "@/theme";
-import { AppText, Button, Field } from "@/ui";
+import { AppText, Button, Field, useKeyboardHeight } from "@/ui";
 import { captureGps, generateClientId, type CapturedGps } from "@/utils/capture";
 import { haversineMeters } from "@/utils/geo";
 import { useLogVisit } from "./useLogVisit";
@@ -45,6 +45,9 @@ export function VisitSheet({ visible, onClose, store, onDone }: Props) {
     const [myGps, setMyGps] = useState<CapturedGps | null>(null);
     const [outcome, setOutcome] = useState<VisitOutcome | null>(null);
     const [note, setNote] = useState("");
+    // Lift the sheet above the keyboard when the note field is focused —
+    // KeyboardAvoidingView is unreliable inside a Modal on Android.
+    const keyboardHeight = useKeyboardHeight();
 
     const locate = useCallback(async () => {
         setGpsState("locating");
@@ -109,108 +112,106 @@ export function VisitSheet({ visible, onClose, store, onDone }: Props) {
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-            <View style={styles.backdrop}>
+            <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
                 <Pressable style={styles.backdropTouch} onPress={close} />
-                <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                    <View style={[styles.sheet, { backgroundColor: t.colors.surface }]}>
-                        <View style={styles.handle} />
-                        <View style={styles.header}>
-                            <AppText variant="h2">{tr("visit.title")}</AppText>
-                            <Pressable onPress={close} hitSlop={10} style={styles.closeBtn}>
-                                <X size={20} color={t.colors.ink500} />
-                            </Pressable>
-                        </View>
-                        <AppText variant="caption" muted style={styles.shop}>
-                            {store?.shopName}
-                        </AppText>
-
-                        <View style={[styles.locBox, { backgroundColor: t.colors.subtle }]}>
-                            {gpsState === "locating" ? (
-                                <AppText variant="caption" muted>
-                                    {tr("visit.locating")}
-                                </AppText>
-                            ) : gpsState === "denied" || gpsState === "error" ? (
-                                <View style={styles.locRow}>
-                                    <AlertTriangle size={16} color={t.colors.error} />
-                                    <AppText variant="caption" style={styles.locText}>
-                                        {tr(gpsState === "denied" ? "visit.denied" : "visit.locError")}
-                                    </AppText>
-                                    <Pressable onPress={() => void locate()} hitSlop={8}>
-                                        <AppText variant="caption" color="primary">
-                                            {tr("visit.retry")}
-                                        </AppText>
-                                    </Pressable>
-                                </View>
-                            ) : !store?.gps ? (
-                                <View style={styles.locRow}>
-                                    <MapPin size={16} color={t.colors.ink500} />
-                                    <AppText variant="caption" muted style={styles.locText}>
-                                        {tr("visit.noStoreLoc")}
-                                    </AppText>
-                                </View>
-                            ) : withinRange ? (
-                                <View style={styles.locRow}>
-                                    <CheckCircle2 size={16} color={t.colors.success} />
-                                    <AppText variant="caption" style={[styles.locText, { color: t.colors.success }]}>
-                                        {tr("visit.within", { m: distanceM })}
-                                    </AppText>
-                                </View>
-                            ) : (
-                                <View style={styles.locRow}>
-                                    <Navigation size={16} color={t.colors.error} />
-                                    <AppText variant="caption" style={[styles.locText, { color: t.colors.error }]}>
-                                        {tr("visit.tooFar", { m: distanceM, radius: RADIUS_M })}
-                                    </AppText>
-                                </View>
-                            )}
-                        </View>
-
-                        <AppText variant="label" color="ink500" style={styles.sectionLabel}>
-                            {tr("visit.outcomeLabel")}
-                        </AppText>
-                        <View style={styles.chips}>
-                            {OUTCOMES.map((o) => {
-                                const sel = outcome === o.value;
-                                return (
-                                    <Pressable
-                                        key={o.value}
-                                        onPress={() => setOutcome(o.value)}
-                                        style={[
-                                            styles.chip,
-                                            { backgroundColor: sel ? t.colors.primary : t.colors.subtle },
-                                        ]}
-                                    >
-                                        <AppText variant="caption" onDark={sel}>
-                                            {tr(o.key)}
-                                        </AppText>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
-
-                        <Field
-                            label={tr("visit.noteLabel")}
-                            placeholder={tr("visit.notePlaceholder")}
-                            value={note}
-                            onChangeText={setNote}
-                            containerStyle={styles.note}
-                        />
-
-                        {errorText ? (
-                            <AppText variant="caption" style={[styles.err, { color: t.colors.error }]}>
-                                {errorText}
-                            </AppText>
-                        ) : null}
-
-                        <Button
-                            title={tr("visit.submit")}
-                            onPress={submit}
-                            loading={logVisit.isPending}
-                            disabled={!canSubmit}
-                            style={styles.submit}
-                        />
+                <View style={[styles.sheet, { backgroundColor: t.colors.surface }]}>
+                    <View style={styles.handle} />
+                    <View style={styles.header}>
+                        <AppText variant="h2">{tr("visit.title")}</AppText>
+                        <Pressable onPress={close} hitSlop={10} style={styles.closeBtn}>
+                            <X size={20} color={t.colors.ink500} />
+                        </Pressable>
                     </View>
-                </KeyboardAvoidingView>
+                    <AppText variant="caption" muted style={styles.shop}>
+                        {store?.shopName}
+                    </AppText>
+
+                    <View style={[styles.locBox, { backgroundColor: t.colors.subtle }]}>
+                        {gpsState === "locating" ? (
+                            <AppText variant="caption" muted>
+                                {tr("visit.locating")}
+                            </AppText>
+                        ) : gpsState === "denied" || gpsState === "error" ? (
+                            <View style={styles.locRow}>
+                                <AlertTriangle size={16} color={t.colors.error} />
+                                <AppText variant="caption" style={styles.locText}>
+                                    {tr(gpsState === "denied" ? "visit.denied" : "visit.locError")}
+                                </AppText>
+                                <Pressable onPress={() => void locate()} hitSlop={8}>
+                                    <AppText variant="caption" color="primary">
+                                        {tr("visit.retry")}
+                                    </AppText>
+                                </Pressable>
+                            </View>
+                        ) : !store?.gps ? (
+                            <View style={styles.locRow}>
+                                <MapPin size={16} color={t.colors.ink500} />
+                                <AppText variant="caption" muted style={styles.locText}>
+                                    {tr("visit.noStoreLoc")}
+                                </AppText>
+                            </View>
+                        ) : withinRange ? (
+                            <View style={styles.locRow}>
+                                <CheckCircle2 size={16} color={t.colors.success} />
+                                <AppText variant="caption" style={[styles.locText, { color: t.colors.success }]}>
+                                    {tr("visit.within", { m: distanceM })}
+                                </AppText>
+                            </View>
+                        ) : (
+                            <View style={styles.locRow}>
+                                <Navigation size={16} color={t.colors.error} />
+                                <AppText variant="caption" style={[styles.locText, { color: t.colors.error }]}>
+                                    {tr("visit.tooFar", { m: distanceM, radius: RADIUS_M })}
+                                </AppText>
+                            </View>
+                        )}
+                    </View>
+
+                    <AppText variant="label" color="ink500" style={styles.sectionLabel}>
+                        {tr("visit.outcomeLabel")}
+                    </AppText>
+                    <View style={styles.chips}>
+                        {OUTCOMES.map((o) => {
+                            const sel = outcome === o.value;
+                            return (
+                                <Pressable
+                                    key={o.value}
+                                    onPress={() => setOutcome(o.value)}
+                                    style={[
+                                        styles.chip,
+                                        { backgroundColor: sel ? t.colors.primary : t.colors.subtle },
+                                    ]}
+                                >
+                                    <AppText variant="caption" onDark={sel}>
+                                        {tr(o.key)}
+                                    </AppText>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+
+                    <Field
+                        label={tr("visit.noteLabel")}
+                        placeholder={tr("visit.notePlaceholder")}
+                        value={note}
+                        onChangeText={setNote}
+                        containerStyle={styles.note}
+                    />
+
+                    {errorText ? (
+                        <AppText variant="caption" style={[styles.err, { color: t.colors.error }]}>
+                            {errorText}
+                        </AppText>
+                    ) : null}
+
+                    <Button
+                        title={tr("visit.submit")}
+                        onPress={submit}
+                        loading={logVisit.isPending}
+                        disabled={!canSubmit}
+                        style={styles.submit}
+                    />
+                </View>
             </View>
         </Modal>
     );

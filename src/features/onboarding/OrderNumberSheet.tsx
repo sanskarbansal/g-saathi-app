@@ -1,19 +1,12 @@
 import React, { useState } from "react";
-import {
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    StyleSheet,
-    View,
-} from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { Hash, X, CheckCircle2 } from "lucide-react-native";
 
 import { isApiError, type AttributeOrderResult } from "@/api";
 import { useTheme } from "@/theme";
-import { AppText, Button, Field, InlineBanner } from "@/ui";
+import { AppText, Button, Field, useKeyboardHeight } from "@/ui";
 import { formatINR } from "@/utils/format";
 import { useAttributeOrder } from "./useAttributeOrder";
 
@@ -40,6 +33,9 @@ export function OrderNumberSheet({
     const { t: tr } = useTranslation();
     const attribute = useAttributeOrder(onboardingId);
     const [orderNumber, setOrderNumber] = useState("");
+    // Lift the sheet above the keyboard — KeyboardAvoidingView is unreliable
+    // inside a Modal on Android, which was hiding the input + Verify button.
+    const keyboardHeight = useKeyboardHeight();
 
     const close = () => {
         setOrderNumber("");
@@ -73,68 +69,66 @@ export function OrderNumberSheet({
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-            <View style={styles.backdrop}>
+            <View style={[styles.backdrop, { paddingBottom: keyboardHeight }]}>
                 <Pressable style={styles.backdropTouch} onPress={close} />
-                <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                    <View style={[styles.sheet, { backgroundColor: t.colors.surface }]}>
-                        <View style={styles.handle} />
+                <View style={[styles.sheet, { backgroundColor: t.colors.surface }]}>
+                    <View style={styles.handle} />
 
-                        {success ? (
-                            <View style={styles.successWrap}>
-                                <View style={styles.successIcon}>
-                                    <CheckCircle2 size={40} color={t.colors.success} />
-                                </View>
-                                <AppText variant="h2" align="center">
-                                    {tr("order.verifiedTitle")}
-                                </AppText>
-                                <AppText variant="display" color="primary" style={styles.amount}>
-                                    {formatINR(success.order.amount)}
-                                </AppText>
-                                <AppText variant="caption" muted align="center">
-                                    {tr("order.verifiedSub", { number: success.order.orderNumber })}
-                                </AppText>
-                                <Button title={tr("common.done")} onPress={close} style={styles.done} />
+                    {success ? (
+                        <View style={styles.successWrap}>
+                            <View style={styles.successIcon}>
+                                <CheckCircle2 size={40} color={t.colors.success} />
                             </View>
-                        ) : (
-                            <>
-                                <View style={styles.header}>
-                                    <AppText variant="h2">
-                                        {mode === "first"
-                                            ? tr("order.firstTitle")
-                                            : tr("order.addTitle")}
-                                    </AppText>
-                                    <Pressable onPress={close} hitSlop={10} style={styles.closeBtn}>
-                                        <X size={20} color={t.colors.ink500} />
-                                    </Pressable>
-                                </View>
+                            <AppText variant="h2" align="center">
+                                {tr("order.verifiedTitle")}
+                            </AppText>
+                            <AppText variant="display" color="primary" style={styles.amount}>
+                                {formatINR(success.order.amount)}
+                            </AppText>
+                            <AppText variant="caption" muted align="center">
+                                {tr("order.verifiedSub", { number: success.order.orderNumber })}
+                            </AppText>
+                            <Button title={tr("common.done")} onPress={close} style={styles.done} />
+                        </View>
+                    ) : (
+                        <>
+                            <View style={styles.header}>
+                                <AppText variant="h2">
+                                    {mode === "first"
+                                        ? tr("order.firstTitle")
+                                        : tr("order.addTitle")}
+                                </AppText>
+                                <Pressable onPress={close} hitSlop={10} style={styles.closeBtn}>
+                                    <X size={20} color={t.colors.ink500} />
+                                </Pressable>
+                            </View>
 
-                                <Field
-                                    label={tr("order.numberLabel")}
-                                    leftIcon={<Hash size={20} color={t.colors.ink500} />}
-                                    placeholder={tr("order.numberPlaceholder")}
-                                    autoCapitalize="characters"
-                                    autoCorrect={false}
-                                    value={orderNumber}
-                                    onChangeText={setOrderNumber}
-                                    helper={tr("order.numberHelper")}
-                                    error={errorText ?? undefined}
-                                    containerStyle={styles.field}
-                                    returnKeyType="done"
-                                    onSubmitEditing={submit}
-                                    autoFocus
-                                />
+                            <Field
+                                label={tr("order.numberLabel")}
+                                leftIcon={<Hash size={20} color={t.colors.ink500} />}
+                                placeholder={tr("order.numberPlaceholder")}
+                                autoCapitalize="characters"
+                                autoCorrect={false}
+                                value={orderNumber}
+                                onChangeText={setOrderNumber}
+                                helper={tr("order.numberHelper")}
+                                error={errorText ?? undefined}
+                                containerStyle={styles.field}
+                                returnKeyType="done"
+                                onSubmitEditing={submit}
+                                autoFocus
+                            />
 
-                                <Button
-                                    title={tr("order.verify")}
-                                    onPress={submit}
-                                    loading={attribute.isPending}
-                                    disabled={orderNumber.trim().length === 0}
-                                    style={styles.save}
-                                />
-                            </>
-                        )}
-                    </View>
-                </KeyboardAvoidingView>
+                            <Button
+                                title={tr("order.verify")}
+                                onPress={submit}
+                                loading={attribute.isPending}
+                                disabled={orderNumber.trim().length === 0}
+                                style={styles.save}
+                            />
+                        </>
+                    )}
+                </View>
             </View>
         </Modal>
     );

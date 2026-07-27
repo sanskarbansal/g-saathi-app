@@ -16,3 +16,4 @@ export { Segmented, type SegmentOption } from "./Segmented";
 export { InlineBanner, type BannerTone } from "./InlineBanner";
 export { Divider } from "./Divider";
 export { IconCircle } from "./IconCircle";
+export { useKeyboardHeight } from "./useKeyboardHeight";
