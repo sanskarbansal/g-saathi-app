@@ -127,6 +127,10 @@
             "other": "Other"
         }
     },
+    "store": {
+        "directions": "Directions",
+        "noLocation": "No saved location"
+    },
     "stage": {
         "draft": "Draft",
         "profile_created": "Profile created",

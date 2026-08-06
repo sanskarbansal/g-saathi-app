@@ -8,6 +8,7 @@ import { AppText, Card, IconCircle, Pill } from "@/ui";
 import { prettyPhone } from "@/utils/format";
 import type { BeatStoreItem } from "@/api";
 import { CallButton } from "./CallButton";
+import { DirectionsButton } from "./DirectionsButton";
 
 /** A store on today's beat: name, phone, last-visit, call + a check-in / visited state. */
 export function BeatRow({
@@ -49,7 +50,12 @@ export function BeatRow({
                         </AppText>
                     ) : null}
                 </View>
-                {item.phone ? <CallButton phone={item.phone} size={40} /> : null}
+                <View style={styles.actions}>
+                    {item.gps ? (
+                        <DirectionsButton location={item.gps} label={item.shopName} size={40} />
+                    ) : null}
+                    {item.phone ? <CallButton phone={item.phone} size={40} /> : null}
+                </View>
             </View>
 
             {/* Status + primary action, separated for breathing room */}
@@ -92,6 +98,7 @@ export function BeatRow({
 const styles = StyleSheet.create({
     card: { marginBottom: 12 },
     top: { flexDirection: "row", alignItems: "center" },
+    actions: { flexDirection: "row", alignItems: "center", gap: 8 },
     body: { flex: 1, marginLeft: 12, marginRight: 8 },
     footer: {
         flexDirection: "row",

@@ -1,12 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    StyleSheet,
-    TextInput,
-    View,
-} from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +8,7 @@ import { authApi, errorI18nKey, isApiError } from "@/api";
 import { otpSchema } from "@/api/schemas";
 import { useSession } from "@/auth";
 import { useTheme } from "@/theme";
-import { AppText, Button, Header, InlineBanner, Screen } from "@/ui";
+import { AppText, Button, Header, InlineBanner, Screen, useKeyboardHeight } from "@/ui";
 import { prettyPhone } from "@/utils/format";
 import type { AuthStackScreenProps } from "@/navigation/types";
 
@@ -26,6 +20,11 @@ export function OtpScreen({ route, navigation }: AuthStackScreenProps<"Otp">) {
     const t = useTheme();
     const { t: tr } = useTranslation();
     const { signInWithOtp } = useSession();
+    const insets = useSafeAreaInsets();
+    // Lift the CTA above the keyboard ourselves — under Android edge-to-edge the
+    // window doesn't resize, and KeyboardAvoidingView is unreliable there.
+    const keyboardHeight = useKeyboardHeight();
+    const keyboardPad = keyboardHeight > 0 ? Math.max(0, keyboardHeight - insets.bottom) : 0;
 
     const [code, setCode] = useState("");
     const [seconds, setSeconds] = useState(RESEND_SECONDS);
@@ -68,10 +67,7 @@ export function OtpScreen({ route, navigation }: AuthStackScreenProps<"Otp">) {
 
     return (
         <Screen padded edges={["top", "left", "right", "bottom"]}>
-            <KeyboardAvoidingView
-                style={styles.flex}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-            >
+            <View style={[styles.flex, { paddingBottom: keyboardPad }]}>
                 <Header onBack={() => navigation.goBack()} />
 
                 <View style={styles.body}>
@@ -150,7 +146,7 @@ export function OtpScreen({ route, navigation }: AuthStackScreenProps<"Otp">) {
                         disabled={!valid}
                     />
                 </View>
-            </KeyboardAvoidingView>
+            </View>
         </Screen>
     );
 }

@@ -9,6 +9,7 @@ import { prettyPhone, initials } from "@/utils/format";
 import type { BeatStore } from "@/features/queries";
 import { StageBadge } from "./StageBadge";
 import { CallButton } from "./CallButton";
+import { DirectionsButton } from "./DirectionsButton";
 
 interface StoreRowProps {
     store: BeatStore;
@@ -57,7 +58,14 @@ export function StoreRow({ store, onPress }: StoreRowProps) {
                         </View>
                     ) : null}
                 </View>
-                {real && store.phone ? <CallButton phone={store.phone} /> : null}
+                {real ? (
+                    <View style={styles.actions}>
+                        {store.gps ? (
+                            <DirectionsButton location={store.gps} label={store.shopName} />
+                        ) : null}
+                        {store.phone ? <CallButton phone={store.phone} /> : null}
+                    </View>
+                ) : null}
             </View>
 
             <View style={styles.chips}>
@@ -89,6 +97,7 @@ export function StoreRow({ store, onPress }: StoreRowProps) {
 const styles = StyleSheet.create({
     card: { marginBottom: 12 },
     top: { flexDirection: "row", alignItems: "center" },
+    actions: { flexDirection: "row", alignItems: "center", gap: 8 },
     body: { flex: 1, marginLeft: 12 },
     metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },

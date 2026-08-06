@@ -68,6 +68,8 @@ export interface BeatStore {
     firstOrder: boolean;
     createdAt?: string;
     lastVisitedAt?: string | null;
+    /** The store's saved GPS pin, when captured at onboarding. */
+    gps?: { lat: number; lng: number } | null;
     /** Local-only: an offline create still in the queue. */
     syncing?: boolean;
     /** Local-only: the queued create hit a permanent error (e.g. duplicate). */
@@ -112,6 +114,10 @@ export function useBeatStores(): {
                 firstOrder: Boolean(o.firstOrderAt),
                 createdAt: o.createdAt,
                 lastVisitedAt: o.lastVisitedAt ?? null,
+                gps:
+                    o.gpsLat && o.gpsLng
+                        ? { lat: Number(o.gpsLat), lng: Number(o.gpsLng) }
+                        : null,
             };
         });
 
@@ -127,6 +133,7 @@ export function useBeatStores(): {
                 stage: "profile_created" as OnboardingStage,
                 appInstalled: false,
                 firstOrder: false,
+                gps: q.input.gps ? { lat: q.input.gps.lat, lng: q.input.gps.lng } : null,
                 syncing: q.status !== "error",
                 errored: q.status === "error",
                 errorCode: q.errorCode,

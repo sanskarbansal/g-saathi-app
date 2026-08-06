@@ -127,6 +127,10 @@
             "other": "अन्य"
         }
     },
+    "store": {
+        "directions": "रास्ता देखें",
+        "noLocation": "लोकेशन सेव नहीं है"
+    },
     "stage": {
         "draft": "ड्राफ़्ट",
         "profile_created": "प्रोफ़ाइल बनी",

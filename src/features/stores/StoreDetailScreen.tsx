@@ -24,6 +24,7 @@ import {
     Skeleton,
 } from "@/ui";
 import { prettyPhone } from "@/utils/format";
+import { openDirections } from "@/utils/maps";
 import { useOnboardingDetail } from "@/features/queries";
 import { ActivationChecklist, OrderNumberSheet } from "@/features/onboarding";
 import { StageBadge } from "./StageBadge";
@@ -49,6 +50,12 @@ export function StoreDetailScreen({ route, navigation }: RootStackScreenProps<"S
     const data = detail.data;
     const store = data?.store;
     const onboarding = data?.onboarding;
+
+    // The store's saved GPS pin (captured at onboarding), if any.
+    const gps =
+        onboarding?.gpsLat && onboarding?.gpsLng
+            ? { lat: Number(onboarding.gpsLat), lng: Number(onboarding.gpsLng) }
+            : null;
 
     const lastVisitDays = onboarding?.lastVisitedAt
         ? Math.max(0, Math.floor((Date.now() - new Date(onboarding.lastVisitedAt).getTime()) / 86400000))
@@ -115,14 +122,24 @@ export function StoreDetailScreen({ route, navigation }: RootStackScreenProps<"S
                             {store?.gstin ? (
                                 <Row icon={<FileText size={16} color={t.colors.ink500} />} value={store.gstin} />
                             ) : null}
-                            {onboarding?.gpsLat && onboarding?.gpsLng ? (
+                            {gps ? (
                                 <Row
                                     icon={<MapPin size={16} color={t.colors.ink500} />}
-                                    value={`${Number(onboarding.gpsLat).toFixed(5)}, ${Number(onboarding.gpsLng).toFixed(5)}`}
+                                    value={`${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}`}
                                 />
                             ) : null}
                             <Row icon={<Clock size={16} color={t.colors.ink500} />} value={lastVisitValue} />
                         </Card>
+
+                        {gps ? (
+                            <Button
+                                title={tr("store.directions")}
+                                variant="ghost"
+                                leftIcon={<MapPin size={18} color={t.colors.primary} />}
+                                onPress={() => void openDirections(gps, store?.shopName ?? shopName)}
+                                style={styles.directions}
+                            />
+                        ) : null}
 
                         <Button
                             title={tr("visit.logVisit")}
@@ -209,6 +226,7 @@ const styles = StyleSheet.create({
     rowIcon: { width: 26 },
     sectionTitle: { marginBottom: 14 },
     addOrder: { marginTop: 20 },
+    directions: { marginTop: 4, marginBottom: 8 },
     checkIn: { marginTop: 4, marginBottom: 20 },
     bottomPad: { height: 32 },
 });

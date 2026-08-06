@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Smartphone, ShoppingBag } from "lucide-react-native";
@@ -7,12 +8,17 @@ import { Smartphone, ShoppingBag } from "lucide-react-native";
 import { authApi, errorI18nKey, isApiError } from "@/api";
 import { phoneDigitsSchema, toFullPhone } from "@/api/schemas";
 import { useTheme } from "@/theme";
-import { AppText, Button, Field, HeroHeader, InlineBanner, Screen } from "@/ui";
+import { AppText, Button, Field, HeroHeader, InlineBanner, Screen, useKeyboardHeight } from "@/ui";
 import type { AuthStackScreenProps } from "@/navigation/types";
 
 export function PhoneScreen({ navigation }: AuthStackScreenProps<"Phone">) {
     const t = useTheme();
     const { t: tr } = useTranslation();
+    const insets = useSafeAreaInsets();
+    // Lift the CTA above the keyboard ourselves — under Android edge-to-edge the
+    // window doesn't resize, and KeyboardAvoidingView is unreliable there.
+    const keyboardHeight = useKeyboardHeight();
+    const keyboardPad = keyboardHeight > 0 ? Math.max(0, keyboardHeight - insets.bottom) : 0;
     const [digits, setDigits] = useState("");
     const valid = useMemo(() => phoneDigitsSchema.safeParse(digits).success, [digits]);
 
@@ -34,10 +40,7 @@ export function PhoneScreen({ navigation }: AuthStackScreenProps<"Phone">) {
 
     return (
         <Screen padded={false} edges={["left", "right", "bottom"]}>
-            <KeyboardAvoidingView
-                style={styles.flex}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-            >
+            <View style={[styles.flex, { paddingBottom: keyboardPad }]}>
                 <HeroHeader style={styles.hero}>
                     <View style={styles.brandRow}>
                         <View style={styles.logo}>
@@ -85,7 +88,7 @@ export function PhoneScreen({ navigation }: AuthStackScreenProps<"Phone">) {
                         disabled={!valid}
                     />
                 </View>
-            </KeyboardAvoidingView>
+            </View>
         </Screen>
     );
 }
