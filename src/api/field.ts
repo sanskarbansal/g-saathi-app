@@ -19,6 +19,16 @@ import type {
     LogVisitResult,
     StoreVisit,
     BeatDay,
+    CatalogPage,
+    CatalogQuery,
+    OrderCartItem,
+    OrderPreview,
+    PlaceOrderInput,
+    PlaceOrderResult,
+    FieldOrder,
+    ListOrdersQuery,
+    CustomerLookup,
+    OrderTarget,
 } from "./types";
 
 /**
@@ -150,5 +160,86 @@ export const fieldApi = {
     /** PATCH /field/beat/stores — skip (drop) or re-pend a store for the day. */
     updateBeatStore(storeId: string, status: "pending" | "skipped", date?: string): Promise<BeatDay> {
         return unwrap<BeatDay>(apiClient.patch("/field/beat/stores", { storeId, status, date }));
+    },
+
+    // ── Ordering on behalf of a kirana ──
+
+    /** GET /field/stores/:storeId/catalog — the hub catalog that serves this store. */
+    getStoreCatalog(storeId: string, query: CatalogQuery = {}): Promise<CatalogPage> {
+        return unwrap<CatalogPage>(apiClient.get(`/field/stores/${storeId}/catalog`, { params: query }));
+    },
+
+    /** POST /field/stores/:storeId/orders/preview — read-only pricing for the cart. */
+    previewOrder(storeId: string, items: OrderCartItem[], couponCode?: string): Promise<OrderPreview> {
+        return unwrap<OrderPreview>(
+            apiClient.post(`/field/stores/${storeId}/orders/preview`, { items, couponCode: couponCode || undefined }),
+        );
+    },
+
+    /**
+     * POST /field/stores/:storeId/orders — place a COD order for the shop. Idempotent on
+     * `clientId`: 201 on create, 200 on replay (both carry `idempotentReplay`).
+     */
+    placeOrder(storeId: string, body: PlaceOrderInput): Promise<PlaceOrderResult> {
+        return unwrap<PlaceOrderResult>(apiClient.post(`/field/stores/${storeId}/orders`, body));
+    },
+
+    // ── Ordering for ANY customer by phone number ──
+
+    /** GET /field/customers/lookup?phone= */
+    lookupCustomer(phone: string): Promise<CustomerLookup> {
+        return unwrap<CustomerLookup>(apiClient.get("/field/customers/lookup", { params: { phone } }));
+    },
+
+    /** Catalog for either kind of target (store → /stores/:id/catalog, customer → /customers/catalog). */
+    getCatalog(target: OrderTarget, query: CatalogQuery = {}): Promise<CatalogPage> {
+        if (target.kind === "store") return this.getStoreCatalog(target.storeId, query);
+        return unwrap<CatalogPage>(
+            apiClient.get("/field/customers/catalog", { params: { ...query, phone: target.phone, addressId: target.addressId } }),
+        );
+    },
+
+    /** Preview for either kind of target. */
+    previewFor(target: OrderTarget, items: OrderCartItem[], couponCode?: string): Promise<OrderPreview> {
+        if (target.kind === "store") return this.previewOrder(target.storeId, items, couponCode);
+        return unwrap<OrderPreview>(
+            apiClient.post("/field/customers/orders/preview", {
+                phone: target.phone,
+                customerName: target.customerName,
+                addressId: target.addressId,
+                address: target.address,
+                items,
+                couponCode: couponCode || undefined,
+            }),
+        );
+    },
+
+    /** Place for either kind of target (same idempotency on clientId). */
+    placeFor(target: OrderTarget, body: PlaceOrderInput): Promise<PlaceOrderResult> {
+        if (target.kind === "store") return this.placeOrder(target.storeId, body);
+        return unwrap<PlaceOrderResult>(
+            apiClient.post("/field/customers/orders", {
+                ...body,
+                phone: target.phone,
+                customerName: target.customerName,
+                addressId: target.addressId,
+                address: target.address,
+            }),
+        );
+    },
+
+    /** GET /field/orders?storeId= — orders this agent placed, newest first. */
+    listOrders(query: ListOrdersQuery = {}): Promise<FieldOrder[]> {
+        return unwrap<FieldOrder[]>(apiClient.get("/field/orders", { params: query }));
+    },
+
+    /** GET /field/orders/:orderId — one order with lines + payment-link state. */
+    getOrder(orderId: string): Promise<FieldOrder> {
+        return unwrap<FieldOrder>(apiClient.get(`/field/orders/${orderId}`));
+    },
+
+    /** POST /field/orders/:orderId/payment-link — SMS the owner a prepay link. */
+    sendOrderPaymentLink(orderId: string): Promise<{ status: string; shortUrl: string | null; reused?: boolean }> {
+        return unwrap(apiClient.post(`/field/orders/${orderId}/payment-link`));
     },
 };

@@ -11,4 +11,9 @@ export const qk = {
     score: (period?: string) => ["field", "score", period ?? "current"] as const,
     beat: (date?: string) => ["field", "beat", date ?? "today"] as const,
     visits: (storeId?: string) => ["field", "visits", storeId ?? "all"] as const,
+    catalog: (targetKey: string, search?: string, categoryId?: string) =>
+        ["field", "catalog", targetKey, search ?? "", categoryId ?? ""] as const,
+    customerLookup: (phone: string) => ["field", "customerLookup", phone] as const,
+    orders: (storeId?: string, kind?: string) => ["field", "orders", storeId ?? "all", kind ?? "all"] as const,
+    order: (orderId: string) => ["field", "order", orderId] as const,
 };

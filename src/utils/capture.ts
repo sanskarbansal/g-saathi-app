@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as Crypto from "expo-crypto";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -61,26 +62,93 @@ export async function hashPhoto(uri: string): Promise<string> {
     return digest.slice(0, 64);
 }
 
-/** Launch camera or gallery, returning the picked photo + its hash (or null). */
+/**
+ * Camera options tuned for the low-RAM Android handsets our agents carry.
+ *
+ * `launchCameraAsync` hands off to the system camera activity, and on a 2–3 GB
+ * device Android will happily kill our process while that activity is in the
+ * foreground. The smaller the bitmap we ask to come back with, the less likely
+ * the OS reclaims us — and the less likely we OOM decoding a 48 MP JPEG on
+ * return. `exif`/`base64` off keeps the result payload small too.
+ */
+const PHOTO_OPTIONS: ImagePicker.ImagePickerOptions = {
+    mediaTypes: ["images"],
+    quality: 0.4,
+    allowsMultipleSelection: false,
+    allowsEditing: false,
+    exif: false,
+    base64: false,
+};
+
+/** Normalise a raw picker result into our `CapturedPhoto`, or null. */
+async function toCapturedPhoto(
+    result: ImagePicker.ImagePickerResult | ImagePicker.ImagePickerErrorResult | null,
+): Promise<CapturedPhoto | null> {
+    if (!result) return null;
+    // An error result carries `code`/`message` instead of assets.
+    if ("code" in result) return null;
+    if (result.canceled) return null;
+    const uri = result.assets?.[0]?.uri;
+    if (!uri) return null;
+    const hash = await hashPhoto(uri);
+    return { uri, hash };
+}
+
+/**
+ * Launch camera or gallery, returning the picked photo + its hash (or null).
+ *
+ * Every failure mode here is non-fatal: a thrown native error (camera busy,
+ * no camera app, permission revoked mid-flight, out of storage) resolves to
+ * `null` rather than propagating as an unhandled rejection, which on a release
+ * build is indistinguishable from "the app closed".
+ */
 export async function pickStorefrontPhoto(
     source: "camera" | "gallery",
 ): Promise<CapturedPhoto | null> {
-    let result: ImagePicker.ImagePickerResult;
+    try {
+        let result: ImagePicker.ImagePickerResult;
 
-    if (source === "camera") {
-        // The camera genuinely needs permission (+ NSCameraUsageDescription).
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (perm.status !== "granted") return null;
-        result = await ImagePicker.launchCameraAsync({ quality: 0.5, mediaTypes: ["images"] });
-    } else {
-        // Gallery: the iOS system photo picker (PHPicker) needs NO library
-        // permission — requesting NSPhotoLibraryUsageDescription access is
-        // unnecessary and crashes builds that don't declare it. Launch directly.
-        result = await ImagePicker.launchImageLibraryAsync({ quality: 0.5, mediaTypes: ["images"] });
+        if (source === "camera") {
+            // The camera genuinely needs permission (+ NSCameraUsageDescription).
+            const perm = await ImagePicker.requestCameraPermissionsAsync();
+            if (perm.status !== "granted") return null;
+            result = await ImagePicker.launchCameraAsync(PHOTO_OPTIONS);
+        } else {
+            // Gallery: the iOS system photo picker (PHPicker) needs NO library
+            // permission — requesting NSPhotoLibraryUsageDescription access is
+            // unnecessary and crashes builds that don't declare it. Launch directly.
+            result = await ImagePicker.launchImageLibraryAsync(PHOTO_OPTIONS);
+        }
+
+        return await toCapturedPhoto(result);
+    } catch {
+        return null;
     }
+}
 
-    if (result.canceled || !result.assets?.[0]) return null;
-    const uri = result.assets[0].uri;
-    const hash = await hashPhoto(uri);
-    return { uri, hash };
+/**
+ * Recover a photo that was captured while Android had killed our process.
+ *
+ * On Android the camera runs in a separate activity. Under memory pressure the
+ * OS destroys `MainActivity` (and our whole JS context) behind it, so when the
+ * agent taps the shutter and confirms, the app cold-starts instead of returning
+ * to the onboarding form — from the agent's seat, "the app closed and I lost my
+ * shop". `getPendingResultAsync` hands back the result the OS delivered to the
+ * restarted activity, so the shot the agent already took is not thrown away.
+ *
+ * Call this once when the Add-Kirana flow mounts. No-op off Android.
+ */
+export async function recoverPendingPhoto(): Promise<CapturedPhoto | null> {
+    if (Platform.OS !== "android") return null;
+    if (typeof ImagePicker.getPendingResultAsync !== "function") return null;
+    try {
+        const pending: unknown = await ImagePicker.getPendingResultAsync();
+        // Some module versions hand back an array of pending results.
+        const first = Array.isArray(pending) ? (pending[0] ?? null) : pending;
+        return await toCapturedPhoto(
+            (first ?? null) as ImagePicker.ImagePickerResult | null,
+        );
+    } catch {
+        return null;
+    }
 }

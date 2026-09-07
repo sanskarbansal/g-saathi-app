@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,7 +15,7 @@ import {
 import { detailsFormSchema, type DetailsForm } from "@/api/schemas";
 import { useTheme } from "@/theme";
 import { AppText, Button, Field, Header, InlineBanner, Screen } from "@/ui";
-import { captureGps, pickStorefrontPhoto } from "@/utils/capture";
+import { captureGps, pickStorefrontPhoto, recoverPendingPhoto } from "@/utils/capture";
 import { useAddKirana } from "./AddKiranaContext";
 import { Stepper } from "./Stepper";
 import type { AddKiranaScreenProps } from "@/navigation/types";
@@ -23,7 +23,8 @@ import type { AddKiranaScreenProps } from "@/navigation/types";
 export function DetailsScreen({ navigation }: AddKiranaScreenProps<"Details">) {
     const t = useTheme();
     const { t: tr } = useTranslation();
-    const { draft, update } = useAddKirana();
+    const { draft, update, hydrated, restored } = useAddKirana();
+    const [photoNotice, setPhotoNotice] = useState<"recovered" | "failed" | null>(null);
 
     const {
         control,
@@ -39,11 +40,32 @@ export function DetailsScreen({ navigation }: AddKiranaScreenProps<"Details">) {
         mode: "onTouched",
     });
 
-    // Auto-capture GPS the first time this step opens.
+    // Auto-capture GPS once the draft has settled, and again any time the status
+    // returns to "idle" (e.g. after a restored draft drops its stale fix).
     useEffect(() => {
+        if (!hydrated) return;
         if (draft.gpsStatus === "idle") void runGps();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [hydrated, draft.gpsStatus]);
+
+    // Android can destroy this activity while the system camera is in front —
+    // on a 2–3 GB handset that is routine, and the agent experiences it as the
+    // app closing mid-capture. When we come back, claim the shot the OS held
+    // for us instead of making them photograph the storefront twice.
+    useEffect(() => {
+        if (!hydrated) return;
+        let cancelled = false;
+        void (async () => {
+            const photo = await recoverPendingPhoto();
+            if (cancelled || !photo) return;
+            update({ photo });
+            setPhotoNotice("recovered");
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hydrated]);
 
     const runGps = async () => {
         update({ gpsStatus: "capturing" });
@@ -53,8 +75,10 @@ export function DetailsScreen({ navigation }: AddKiranaScreenProps<"Details">) {
     };
 
     const onPickPhoto = async (source: "camera" | "gallery") => {
+        setPhotoNotice(null);
         const photo = await pickStorefrontPhoto(source);
         if (photo) update({ photo });
+        else setPhotoNotice("failed");
     };
 
     const onNext = handleSubmit((values) => {
@@ -81,6 +105,13 @@ export function DetailsScreen({ navigation }: AddKiranaScreenProps<"Details">) {
 
             <View style={styles.body}>
                 <AppText variant="h2">{tr("onboarding.detailsTitle")}</AppText>
+                {restored ? (
+                    <InlineBanner
+                        tone="info"
+                        text={tr("onboarding.draftRestored")}
+                        style={styles.notice}
+                    />
+                ) : null}
                 <AppText variant="body" muted style={styles.subtitle}>
                     {tr("onboarding.detailsSubtitle")}
                 </AppText>
@@ -145,6 +176,17 @@ export function DetailsScreen({ navigation }: AddKiranaScreenProps<"Details">) {
                 <AppText variant="label" color="ink700" style={styles.blockLabel}>
                     {tr("onboarding.photo")}
                 </AppText>
+                {photoNotice ? (
+                    <InlineBanner
+                        tone={photoNotice === "recovered" ? "success" : "warning"}
+                        text={tr(
+                            photoNotice === "recovered"
+                                ? "onboarding.photoRecovered"
+                                : "onboarding.photoFailed",
+                        )}
+                        style={styles.notice}
+                    />
+                ) : null}
                 {draft.photo ? (
                     <View style={styles.photoWrap}>
                         <Image source={{ uri: draft.photo.uri }} style={styles.photo} />
@@ -232,6 +274,7 @@ const styles = StyleSheet.create({
     },
     retakeText: { marginLeft: 6 },
     photoButtons: { flexDirection: "row", gap: 12, marginBottom: 20 },
+    notice: { marginBottom: 12 },
     flex1: { flex: 1 },
     retryGps: { marginTop: 10 },
     next: { marginTop: 28 },

@@ -63,6 +63,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             },
         ],
         "expo-font",
+        // Android: largeHeap + hardware acceleration, so the OS is less likely to
+        // kill us while the system camera activity is in the foreground.
+        "./plugins/withAndroidCameraResilience",
     ],
     extra: {
         // Read in src/config/env.ts. EXPO_PUBLIC_* vars are inlined at build time;

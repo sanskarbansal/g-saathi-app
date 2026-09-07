@@ -10,6 +10,7 @@ import {
     Navigation,
     Phone,
     Repeat,
+    ShoppingCart,
 } from "lucide-react-native";
 
 import { useTheme } from "@/theme";
@@ -27,6 +28,7 @@ import { prettyPhone } from "@/utils/format";
 import { openDirections } from "@/utils/maps";
 import { useOnboardingDetail } from "@/features/queries";
 import { ActivationChecklist, OrderNumberSheet } from "@/features/onboarding";
+import { StoreOrdersSection } from "@/features/orders";
 import { StageBadge } from "./StageBadge";
 import { VisitSheet } from "./VisitSheet";
 import { CallButton } from "./CallButton";
@@ -149,6 +151,28 @@ export function StoreDetailScreen({ route, navigation }: RootStackScreenProps<"S
                             style={styles.checkIn}
                         />
 
+                        {store?.id ? (
+                            <>
+                                <Button
+                                    title={tr("shopOrder.orderForShop")}
+                                    variant="primary"
+                                    leftIcon={<ShoppingCart size={20} color={t.colors.primary} />}
+                                    onPress={() =>
+                                        navigation.navigate("OrderCatalog", {
+                                            target: { kind: "store", storeId: store.id, onboardingId },
+                                            title: store.shopName ?? shopName ?? "",
+                                        })
+                                    }
+                                    style={styles.orderBtn}
+                                />
+                                <AppText variant="h2" style={styles.sectionTitle}>
+                                    {tr("shopOrder.recentOrders")}
+                                </AppText>
+                                <StoreOrdersSection storeId={store.id} />
+                                <View style={styles.sectionGap} />
+                            </>
+                        ) : null}
+
                         <AppText variant="h2" style={styles.sectionTitle}>
                             {tr("onboarding.activateTitle")}
                         </AppText>
@@ -227,6 +251,8 @@ const styles = StyleSheet.create({
     sectionTitle: { marginBottom: 14 },
     addOrder: { marginTop: 20 },
     directions: { marginTop: 4, marginBottom: 8 },
-    checkIn: { marginTop: 4, marginBottom: 20 },
+    checkIn: { marginTop: 4, marginBottom: 12 },
+    orderBtn: { marginBottom: 24 },
+    sectionGap: { height: 16 },
     bottomPad: { height: 32 },
 });

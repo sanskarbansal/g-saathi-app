@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { Plus, TrendingUp, Store, Zap, WifiOff } from "lucide-react-native";
+import { PhoneCall, Plus, TrendingUp, Store, Zap, WifiOff } from "lucide-react-native";
 
 import { useTheme } from "@/theme";
 import {
@@ -127,6 +127,13 @@ export function HomeScreen({ navigation }: AppTabScreenProps<"Home">) {
                     variant="ghost"
                     leftIcon={<Plus size={20} color={t.colors.primary} />}
                     onPress={() => navigation.navigate("AddKirana")}
+                    style={styles.ctaGhost}
+                />
+                <Button
+                    title={tr("home.orderByPhone")}
+                    variant="ghost"
+                    leftIcon={<PhoneCall size={20} color={t.colors.primary} />}
+                    onPress={() => navigation.navigate("CustomerLookup")}
                     style={styles.ctaGhost}
                 />
 

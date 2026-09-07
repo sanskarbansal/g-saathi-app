@@ -70,10 +70,14 @@ The seed prints the agent. **Default login phone: `+91 9990000001`.**
 | **M5 My Stores** | Beat tab: portfolio, filters, health chips, detail + continue activation | `GET /field/stores`, `GET /field/onboardings/:id` |
 | **M6 Score** | Balanced scorecard: ring + 4 pillars, month switcher | `GET /field/score?period=YYYY-MM` |
 | **M7 Profile** | Employee code, zone, level, points, base salary, language, logout | `GET /field/me` |
+| **M9 Order by phone** | Home → "Order by phone": look up any Groship customer by number (or create one), pick/add a delivery address (GPS pin), then the same catalog → checkout flow. Credits verified revenue on delivery (no store funnel) | `GET /field/customers/lookup`, `GET /field/customers/catalog`, `POST /field/customers/orders/preview`, `POST /field/customers/orders`, `GET /field/orders?kind=` |
+| **M8 Order for shop** | From a store: hub catalog (search, stepper, tier ladder, pack chips, bulk-quantity sheet) → cart → checkout (server pricing, coupon, optional GST/B2B invoice, optional SMS payment link) → COD order placed; recent orders on the store | `GET /field/stores/:id/catalog`, `POST /field/stores/:id/orders/preview`, `POST /field/stores/:id/orders`, `GET /field/orders` |
 
 Auth gate: after verify-otp the app calls `GET /field/me`. A **403** ("not a field agent") signs the user out with a clear message.
 
 ## Key behaviors
+
+- **Ordering on behalf of a kirana (M8).** The agent builds a cart from the Groship hub that serves the store and places a **cash-on-delivery** order for the owner's account (the backend creates the owner's customer account + shop address from the onboarding record if they don't exist yet). Prices, tax, delivery fee and coupons all come from the server (`/orders/preview`), never typed by the agent. Placing is **idempotent on a client-generated `clientId`**, so a retry never double-orders. Once the order is delivered (or paid via the optional SMS link) the agent's `first_order` / `repeat_order` / `revenue` KPIs are credited automatically — no manual order-number entry. The cart is in-memory only and requires connectivity (stock is live).
 
 - **Offline-first onboarding.** A `clientId` (UUID v4) is generated when the Add-Kirana flow opens. Creating a shop offline enqueues a durable mutation (persisted to AsyncStorage) and the shop shows immediately as **"saved · syncing"**. On reconnect it POSTs exactly once — the endpoint is idempotent on `clientId`, so a retry returns the same record (200) and never double-creates. Duplicate-phone (409) is surfaced for the agent to resolve.
 - **Stale-while-revalidate reads.** Home / Beat / Score are served from a persisted React Query cache (AsyncStorage), so the app is usable with no signal. `onlineManager` is wired to NetInfo.

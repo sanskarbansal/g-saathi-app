@@ -87,6 +87,8 @@ jest.mock("expo-image-picker", () => ({
     launchImageLibraryAsync: jest.fn(() =>
         Promise.resolve({ canceled: false, assets: [{ uri: "file:///photo.jpg" }] }),
     ),
+    // Android hands back a result captured before the OS killed the activity.
+    getPendingResultAsync: jest.fn(() => Promise.resolve(null)),
     MediaTypeOptions: { Images: "Images" },
     MediaType: { Images: "images" },
 }));
@@ -113,7 +115,7 @@ jest.mock("react-native-svg", () => {
         return C;
     };
     const Svg = make("Svg");
-    return {
+    const named = {
         __esModule: true,
         default: Svg,
         Svg,
@@ -125,7 +127,14 @@ jest.mock("react-native-svg", () => {
         Stop: make("Stop"),
         Text: make("Text"),
         Rect: make("Rect"),
+        // lucide icons also draw with these primitives
+        Line: make("Line"),
+        Polyline: make("Polyline"),
+        Polygon: make("Polygon"),
+        Ellipse: make("Ellipse"),
     };
+    // Any other svg element an icon might use → a plain View, so no icon can crash a test.
+    return new Proxy(named, { get: (target, prop) => (prop in target ? target[prop] : typeof prop === "string" ? make(prop) : undefined) });
 });
 
 // react-native-safe-area-context — inline passthrough mock (zero insets).

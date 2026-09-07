@@ -315,3 +315,245 @@ export interface BeatDay {
     visited: number;
     stores: BeatStoreItem[];
 }
+
+// ── Ordering on behalf of a kirana ("order for this shop") ───────────────────
+
+/** A variant as returned by GET /field/stores/:storeId/catalog (subset the app uses). */
+export interface CatalogVariant {
+    id: string;
+    name: string;
+    sku: string;
+    sellingPrice: number;
+    mrp: number;
+    images: string[] | null;
+    unit: string | null;
+    weight?: string | null;
+    inStock: boolean;
+    isDefault: boolean;
+    maxQuantityPerOrder?: number | null;
+    /** Segment/tier-resolved price for this store's owner (rupees); falls back to sellingPrice. */
+    effectivePrice?: number;
+    tiers?: { minQuantity: number; unitPrice: number }[];
+    /**
+     * Sellable pack hierarchy (Base / Inner / Outer …) when the hub has it configured.
+     * `factorToBase` = base units per pack; `available` = whole packs in stock.
+     */
+    units?: CatalogUnit[];
+}
+
+export interface CatalogUnit {
+    id: string;
+    name: string;
+    factorToBase: number;
+    isBase: boolean;
+    isSealed: boolean;
+    sellable: boolean;
+    sellingPrice: number | null;
+    mrp: number | null;
+    sortOrder: number;
+    available?: number;
+}
+
+export interface CatalogProduct {
+    id: string;
+    name: string;
+    slug: string;
+    category: { id: string; name: string } | null;
+    brand: { id: string; name: string } | null;
+    variants: CatalogVariant[];
+}
+
+export interface CatalogQuery {
+    search?: string;
+    categoryId?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface CatalogPage {
+    store: { id: string; shopName: string; warehouseId: string };
+    products: CatalogProduct[];
+    totalProducts: number;
+    totalPages: number;
+    currentPage: number;
+    limit: number;
+}
+
+export interface OrderCartItem {
+    productId: string;
+    variantId: string;
+    /** BASE units — packs are multiplied out before sending (2 cases × 12 = 24). */
+    quantity: number;
+    /** Informational: the pack the agent picked and how many of it. */
+    unitId?: string;
+    packQuantity?: number;
+}
+
+/** Buyer GST details for a B2B tax invoice (server validates checksum + state). */
+export interface GstDetailsInput {
+    gstin: string;
+    legalName: string;
+    tradeName?: string;
+    address?: string;
+}
+
+export interface OrderPreviewLine {
+    productId: string;
+    variantId: string;
+    quantity: number;
+    mrp: number;
+    basePrice: number;
+    unitPrice: number;
+    lineTotal: number;
+    hasTierDiscount: boolean;
+    /** Quantity-break ladder visible to this store (ascending by minQuantity). */
+    tiers?: { minQuantity: number; unitPrice: number }[];
+}
+
+/** POST /field/stores/:storeId/orders/preview */
+export interface OrderPreview {
+    customerExists: boolean;
+    items: OrderPreviewLine[];
+    itemsTotal: number;
+    itemsTotalAtBase: number;
+    itemsMrpTotal: number;
+    tierSavings: number;
+    deliveryFee: number;
+    freeDeliveryApplied: boolean;
+    coupon: { code: string; applied: boolean; discount: number; message?: string } | null;
+    discount: number;
+    grandTotal: number;
+    minOrderAmount: number;
+    meetsMinimum: boolean;
+}
+
+export interface PlaceOrderInput {
+    clientId: string;
+    items: OrderCartItem[];
+    couponCode?: string;
+    sendPaymentLink?: boolean;
+    notes?: string;
+    invoiceType?: "b2b" | "b2c";
+    gstDetails?: GstDetailsInput;
+}
+
+export type FieldOrderStatus =
+    | "pending"
+    | "confirmed"
+    | "preparing"
+    | "ready"
+    | "picked_up"
+    | "out_for_delivery"
+    | "delivered"
+    | "cancelled"
+    | "returned";
+
+export interface FieldOrderItem {
+    productId: string;
+    variantId: string;
+    productName: string;
+    variantName: string | null;
+    productImage: string | null;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+}
+
+export interface FieldOrder {
+    id: string;
+    orderNumber: string;
+    clientId: string | null;
+    storeId: string | null;
+    status: FieldOrderStatus;
+    paymentMethod: "cod" | "online";
+    paymentStatus: "pending" | "completed" | "failed" | "refunded";
+    subtotal: number;
+    deliveryFee: number;
+    discount: number;
+    total: number;
+    itemCount: number;
+    placedAt: string;
+    deliveredAt: string | null;
+    estimatedDeliveryTime: string | null;
+    invoiceType: "b2b" | "b2c";
+    gstin: string | null;
+    /** Who the order was for (from the delivery address). */
+    customerName: string | null;
+    customerPhone: string | null;
+    /** Present on detail / place responses. */
+    items?: FieldOrderItem[];
+    paymentLink?: { url: string | null; status: string } | null;
+}
+
+export interface PlaceOrderResult {
+    order: FieldOrder;
+    idempotentReplay: boolean;
+    paymentLink: { url: string | null; status: string } | null;
+    skippedItems?: { productName: string; reason: string; requestedQuantity: number; availableQuantity: number }[];
+    adjustedItems?: { productName: string; originalQuantity: number; adjustedQuantity: number }[];
+}
+
+export interface ListOrdersQuery {
+    storeId?: string;
+    /** "store" = portfolio kirana orders; "customer" = by-phone orders. */
+    kind?: "store" | "customer";
+    limit?: number;
+    offset?: number;
+}
+
+// ── Ordering for ANY Groship customer by phone number ────────────────────────
+
+/** A new delivery address the agent captures for a customer. */
+export interface CustomerAddressInput {
+    name?: string;
+    label?: string;
+    fullAddress: string;
+    landmark?: string;
+    pincode: string;
+    city: string;
+    state: string;
+    mobileNumber?: string;
+    latitude?: number;
+    longitude?: number;
+}
+
+export interface CustomerAddress extends Required<Pick<CustomerAddressInput, "fullAddress" | "pincode" | "city" | "state">> {
+    id: string;
+    label: string;
+    name: string;
+    landmark: string | null;
+    mobileNumber: string;
+    isDefault: boolean;
+    /** Hub serving this pin — null when outside every delivery radius. */
+    warehouseId: string | null;
+}
+
+/** GET /field/customers/lookup?phone= */
+export interface CustomerLookup {
+    phone: string;
+    customer: { id: string; name: string; phone: string; codAllowed: boolean } | null;
+    addresses: CustomerAddress[];
+    /** Set when the number is a kirana in THIS agent's portfolio — use the store flow instead. */
+    store: { id: string; onboardingId: string; shopName: string } | null;
+    zoneWarehouseId: string | null;
+}
+
+/**
+ * Who an order is being built for. Drives which endpoints the catalog / preview / place
+ * hooks call and what the checkout prefills.
+ */
+export type OrderTarget =
+    | { kind: "store"; storeId: string; onboardingId: string }
+    | {
+          kind: "customer";
+          phone: string;
+          /** Required when the number has no Groship account yet. */
+          customerName?: string;
+          addressId?: string;
+          address?: CustomerAddressInput;
+      };
+
+/** Stable key for a target — the cart is scoped to it. */
+export function orderTargetKey(t: OrderTarget): string {
+    return t.kind === "store" ? `store:${t.storeId}` : `phone:${t.phone.replace(/\D/g, "").slice(-10)}`;
+}
