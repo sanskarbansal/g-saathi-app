@@ -363,7 +363,13 @@
             "atStock": "Only {{available}} in stock{{packs}}",
             "inPacks": " ({{count}} {{name}})",
             "packTooBig": "A {{name}} is more than this item allows — order loose units instead",
-            "max": "Max {{count}}"
+            "max": "Max {{count}}",
+            "packMath": "{{count}} {{name}} × {{factor}} = {{total}} {{unit}}",
+            "howManyUnits": "How many {{name}}?",
+            "holdHint": "Hold − or + to go faster",
+            "removePack": "− {{name}}",
+            "unitsTotal_one": "{{count}} unit in total",
+            "unitsTotal_other": "{{count}} units in total"
         },
         "gst": {
             "title": "GST invoice (B2B)",
@@ -376,8 +382,34 @@
             "legalNameShort": "Enter the full registered name",
             "tradeName": "Trade name",
             "onOrder": "GST invoice · {{gstin}}",
-            "tag": "GST"
-        }
+            "tag": "GST",
+            "incomplete": "Enter a valid GSTIN and registered name, or turn off the GST invoice"
+        },
+        "specs": {
+            "variant": "Variant",
+            "unit": "Unit",
+            "weight": "Weight",
+            "pack": "{{name}} = {{factor}} {{unit}}"
+        },
+        "price": {
+            "mrp": "MRP",
+            "perUnit": "per {{unit}}",
+            "off": "{{amount}} off · {{pct}}%",
+            "inCart": "{{qty}} × {{price}} = {{total}} in cart",
+            "lineCalc": "{{qty}} × {{price}}",
+            "mrpTotal": "MRP value",
+            "youSave": "You save {{amount}} against MRP",
+            "products_one": "{{count}} product",
+            "products_other": "{{count}} products",
+            "variants_one": "{{count}} option",
+            "variants_other": "{{count}} options",
+            "lowStock": "Only {{count}} left",
+            "inCartFilter": "In cart",
+            "loadingMore": "Loading more…",
+            "offPct": "{{pct}}% off"
+        },
+        "addMoreShort": "Add more",
+        "placeOrderShort": "Place order"
     },
     "phoneOrder": {
         "title": "Order by phone",
@@ -412,6 +444,27 @@
             "gpsSet": "Pin set (±{{acc}} m)",
             "gpsHint": "The pin picks the hub and helps the rider find the door.",
             "gpsFailed": "Couldn't get your location — you can continue without a pin."
+        },
+        "steps": {
+            "number": "Customer's number",
+            "who": "Who is it for",
+            "where": "Deliver to"
+        },
+        "recent": "Recent customers",
+        "recentHint": "Tap a number to order for them again",
+        "lastOrder": "Last order {{date}}",
+        "lookingUp": "Looking up this number…",
+        "found": "Groship customer · {{name}}",
+        "notFound": "New number — we'll create the account when you place the order",
+        "newAddress": "New address",
+        "summaryTo": "Deliver to {{name}}",
+        "missing": {
+            "phone": "Enter the customer's 10-digit number to begin",
+            "name": "Add the customer's name to continue",
+            "address": "Pick a saved address or add a new one",
+            "addressFields": "Fill in the address, pincode and city",
+            "hub": "No Groship hub delivers to this address — pick another",
+            "offline": "Connect to the internet to look up customers"
         }
     }
 }

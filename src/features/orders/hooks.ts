@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { fieldApi, orderTargetKey, qk, type OrderCartItem, type OrderTarget, type PlaceOrderInput, type PlaceOrderResult } from "@/api";
 
@@ -13,15 +13,28 @@ export function useDebounced<T>(value: T, ms = 350): T {
     return v;
 }
 
-/** The hub catalog for an order target, filtered by a (debounced) search term. */
+const CATALOG_PAGE = 30;
+
+/**
+ * The hub catalog for an order target, filtered by a (debounced) search term and loaded
+ * page by page as the agent scrolls, so a hub with hundreds of SKUs is browsable without
+ * search. `products` is every page flattened; `total` is the hub's count for this search.
+ */
 export function useCatalog(target: OrderTarget, search: string, categoryId?: string) {
     const q = search.trim();
-    return useQuery({
+    const query = useInfiniteQuery({
         queryKey: qk.catalog(orderTargetKey(target), q, categoryId),
-        queryFn: () => fieldApi.getCatalog(target, { search: q || undefined, categoryId, limit: 60 }),
+        queryFn: ({ pageParam }) => fieldApi.getCatalog(target, { search: q || undefined, categoryId, page: pageParam, limit: CATALOG_PAGE }),
+        initialPageParam: 1,
+        getNextPageParam: (last) => (last.currentPage < last.totalPages ? last.currentPage + 1 : undefined),
         placeholderData: keepPreviousData,
         staleTime: 60_000,
     });
+    // Tolerate a cache entry of an unexpected shape (e.g. restored from an older build).
+    const pages = useMemo(() => (Array.isArray(query.data?.pages) ? query.data.pages : []), [query.data]);
+    const products = useMemo(() => pages.flatMap((p) => p?.products ?? []), [pages]);
+    const total = pages[0]?.totalProducts ?? products.length;
+    return { ...query, products, total };
 }
 
 /** Look a customer up by phone (only fires on a plausible 10-digit number). */

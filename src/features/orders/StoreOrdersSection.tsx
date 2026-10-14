@@ -6,7 +6,7 @@ import { Receipt } from "lucide-react-native";
 import type { FieldOrder, FieldOrderStatus } from "@/api";
 import { useTheme } from "@/theme";
 import { AppText, Card, Divider, Pill, Skeleton, type PillTone } from "@/ui";
-import { formatINR } from "@/utils/format";
+import { formatPrice } from "@/utils/format";
 import { useOrders } from "./hooks";
 
 const STATUS_TONE: Record<FieldOrderStatus, PillTone> = {
@@ -74,7 +74,7 @@ function OrderRow({ order, date }: { order: FieldOrder; date: string }) {
                 </AppText>
             </View>
             <View style={styles.right}>
-                <AppText variant="bodyStrong">{formatINR(order.total)}</AppText>
+                <AppText variant="bodyStrong">{formatPrice(order.total)}</AppText>
                 <Pill size="sm" tone={STATUS_TONE[order.status] ?? "neutral"} label={tr(`shopOrder.status.${order.status}`)} />
             </View>
         </View>

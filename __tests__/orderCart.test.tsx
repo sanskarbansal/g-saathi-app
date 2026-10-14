@@ -139,3 +139,36 @@ describe("order targets", () => {
         expect(orderTargetKey({ kind: "customer", phone: "9700011122" })).toBe("phone:9700011122");
     });
 });
+
+describe("quantity limit (per-order max / stock)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { quantityLimit } = require("@/features/orders");
+    const units = [
+        { id: "u-base", name: "Piece", factorToBase: 1, isBase: true, isSealed: false, sellable: true, sellingPrice: null, mrp: null, sortOrder: 0, available: 30 },
+        { id: "u-box", name: "Box", factorToBase: 12, isBase: false, isSealed: false, sellable: true, sellingPrice: null, mrp: null, sortOrder: 1, available: 2 },
+    ];
+
+    it("is the tighter of the per-order cap and base stock", () => {
+        expect(quantityLimit({ maxQuantityPerOrder: 50, units })).toBe(30);
+        expect(quantityLimit({ maxQuantityPerOrder: 20, units })).toBe(20);
+        expect(quantityLimit({ maxQuantityPerOrder: 20 })).toBe(20);
+        expect(quantityLimit({ maxQuantityPerOrder: null, units })).toBe(30);
+        expect(quantityLimit({ maxQuantityPerOrder: null })).toBeNull();
+        expect(quantityLimit({ maxQuantityPerOrder: 0 })).toBeNull();
+    });
+
+    it("the cart never holds more than the limit, whichever setter asked", () => {
+        const { result } = renderHook(() => useCart(), { wrapper });
+        act(() => result.current.startFor("s1", "A"));
+        act(() => result.current.setQuantity(product(), variant({ maxQuantityPerOrder: 20, units }), 500));
+        expect(result.current.quantityOf("v1")).toBe(20);
+        act(() => result.current.setLineQuantity("v1", 99));
+        expect(result.current.quantityOf("v1")).toBe(20);
+        // A whole pack that would overshoot is cut to the limit too.
+        act(() => result.current.setQuantity(product(), variant({ maxQuantityPerOrder: 20, units }), 12 + 12, { unitId: "u-box", packQuantity: 2 }));
+        expect(result.current.quantityOf("v1")).toBe(20);
+        // Stock alone bounds it when there is no cap.
+        act(() => result.current.setQuantity(product(), variant({ maxQuantityPerOrder: null, units }), 31));
+        expect(result.current.quantityOf("v1")).toBe(30);
+    });
+});

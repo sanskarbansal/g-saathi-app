@@ -363,7 +363,13 @@
             "atStock": "सिर्फ़ {{available}} स्टॉक में{{packs}}",
             "inPacks": " ({{count}} {{name}})",
             "packTooBig": "एक {{name}} इस आइटम की सीमा से ज़्यादा है — खुली यूनिट में ऑर्डर करें",
-            "max": "अधिकतम {{count}}"
+            "max": "अधिकतम {{count}}",
+            "packMath": "{{count}} {{name}} × {{factor}} = {{total}} {{unit}}",
+            "howManyUnits": "कितने {{name}}?",
+            "holdHint": "तेज़ी से बढ़ाने के लिए − या + दबाए रखें",
+            "removePack": "− {{name}}",
+            "unitsTotal_one": "कुल {{count}} यूनिट",
+            "unitsTotal_other": "कुल {{count}} यूनिट"
         },
         "gst": {
             "title": "GST बिल (B2B)",
@@ -376,8 +382,34 @@
             "legalNameShort": "पूरा रजिस्टर्ड नाम लिखें",
             "tradeName": "व्यापारिक नाम",
             "onOrder": "GST बिल · {{gstin}}",
-            "tag": "GST"
-        }
+            "tag": "GST",
+            "incomplete": "सही GSTIN और रजिस्टर्ड नाम लिखें, या GST बिल बंद करें"
+        },
+        "specs": {
+            "variant": "वैरिएंट",
+            "unit": "यूनिट",
+            "weight": "वज़न",
+            "pack": "{{name}} = {{factor}} {{unit}}"
+        },
+        "price": {
+            "mrp": "MRP",
+            "perUnit": "प्रति {{unit}}",
+            "off": "{{amount}} की बचत · {{pct}}%",
+            "inCart": "{{qty}} × {{price}} = {{total}} कार्ट में",
+            "lineCalc": "{{qty}} × {{price}}",
+            "mrpTotal": "MRP के हिसाब से",
+            "youSave": "MRP से {{amount}} की बचत",
+            "products_one": "{{count}} सामान",
+            "products_other": "{{count}} सामान",
+            "variants_one": "{{count}} विकल्प",
+            "variants_other": "{{count}} विकल्प",
+            "lowStock": "सिर्फ़ {{count}} बचे",
+            "inCartFilter": "कार्ट में",
+            "loadingMore": "और लोड हो रहा है…",
+            "offPct": "{{pct}}% छूट"
+        },
+        "addMoreShort": "और जोड़ें",
+        "placeOrderShort": "ऑर्डर करें"
     },
     "phoneOrder": {
         "title": "फ़ोन से ऑर्डर",
@@ -412,6 +444,27 @@
             "gpsSet": "पिन सेट (±{{acc}} मी)",
             "gpsHint": "पिन से हब तय होता है और राइडर को दरवाज़ा मिलता है।",
             "gpsFailed": "लोकेशन नहीं मिली — बिना पिन के भी आगे बढ़ सकते हैं।"
+        },
+        "steps": {
+            "number": "ग्राहक का नंबर",
+            "who": "किसके लिए",
+            "where": "कहाँ डिलीवर करें"
+        },
+        "recent": "हाल के ग्राहक",
+        "recentHint": "दोबारा ऑर्डर करने के लिए नंबर पर टैप करें",
+        "lastOrder": "पिछला ऑर्डर {{date}}",
+        "lookingUp": "नंबर खोजा जा रहा है…",
+        "found": "Groship ग्राहक · {{name}}",
+        "notFound": "नया नंबर — ऑर्डर करते ही खाता बन जाएगा",
+        "newAddress": "नया पता",
+        "summaryTo": "{{name}} को डिलीवर होगा",
+        "missing": {
+            "phone": "शुरू करने के लिए ग्राहक का 10 अंकों का नंबर लिखें",
+            "name": "आगे बढ़ने के लिए ग्राहक का नाम लिखें",
+            "address": "सेव किया पता चुनें या नया जोड़ें",
+            "addressFields": "पता, पिनकोड और शहर भरें",
+            "hub": "इस पते पर कोई Groship हब डिलीवर नहीं करता — दूसरा चुनें",
+            "offline": "ग्राहक खोजने के लिए इंटरनेट चालू करें"
         }
     }
 }

@@ -10,6 +10,8 @@ export interface CartLine {
     productName: string;
     variantName: string;
     unit: string | null;
+    /** Net weight / volume as the hub typed it ("500g") — labelled on the checkout line. */
+    weight: string | null;
     image: string | null;
     /** Per-base-unit price shown while building the cart (server re-prices at preview/place). */
     unitPrice: number;
@@ -78,6 +80,36 @@ export function packBreakdown(quantity: number, units: CatalogUnit[]): { unit: C
     return out;
 }
 
+/**
+ * The pack note to send with a line at `quantity`: set only when the quantity is exactly a
+ * whole number of ONE pack (so "2 × Case" is preserved for the hub), else null (loose).
+ */
+export function packNoteFor(quantity: number, units: CatalogUnit[]): { unitId: string; packQuantity: number } | null {
+    const bd = packBreakdown(quantity, units);
+    const first = bd?.[0];
+    return bd && bd.length === 1 && first && !first.unit.isBase ? { unitId: first.unit.id, packQuantity: first.count } : null;
+}
+
+/**
+ * The most of a variant that can go in the cart, in BASE units: the per-order cap (which the
+ * hub already folds live stock into) and, when the pack hierarchy reports it, the base units
+ * on hand — whichever is tighter. `null` when nothing bounds it.
+ */
+export function quantityLimit(v: { maxQuantityPerOrder?: number | null; units?: CatalogUnit[] | null }): number | null {
+    const cap = v.maxQuantityPerOrder != null && v.maxQuantityPerOrder > 0 ? v.maxQuantityPerOrder : null;
+    const base = (v.units ?? []).find((u) => u.isBase);
+    const stock = base?.available != null && base.available >= 0 ? base.available : null;
+    if (cap == null) return stock;
+    if (stock == null) return cap;
+    return Math.min(cap, stock);
+}
+
+/** Clamp a requested base quantity into [0, limit]. */
+function clampQuantity(quantity: number, limit: number | null): number {
+    const q = Math.max(0, Math.floor(quantity));
+    return limit != null && q > limit ? limit : q;
+}
+
 /** Per-unit price for a line at its current quantity: the highest rung reached, else the qty-1 price. */
 export function lineUnitPrice(l: CartLine): number {
     let price = l.unitPrice;
@@ -106,7 +138,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     const setLineQuantity = useCallback((variantId: string, quantity: number, pack?: { unitId: string; packQuantity: number } | null) => {
         setState((s) => {
-            const q = Math.max(0, Math.floor(quantity));
+            const existing = s.lines.find((l) => l.variantId === variantId);
+            if (!existing) return s;
+            // Never let a line exceed what the hub will accept — whichever path asked for it.
+            const q = clampQuantity(quantity, quantityLimit(existing));
             const lines =
                 q === 0
                     ? s.lines.filter((l) => l.variantId !== variantId)
@@ -121,7 +156,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     const setQuantity = useCallback((product: CatalogProduct, variant: CatalogVariant, quantity: number, pack?: { unitId: string; packQuantity: number } | null) => {
         setState((s) => {
-            const q = Math.max(0, Math.floor(quantity));
+            // Never let a line exceed what the hub will accept — whichever path asked for it.
+            const q = clampQuantity(quantity, quantityLimit({ maxQuantityPerOrder: variant.maxQuantityPerOrder, units: sellableUnits(variant) }));
             const existing = s.lines.find((l) => l.variantId === variant.id);
             if (q === 0) return { ...s, lines: s.lines.filter((l) => l.variantId !== variant.id) };
             if (existing) {
@@ -140,6 +176,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 productName: product.name,
                 variantName: variant.name,
                 unit: variant.unit ?? null,
+                weight: variant.weight ?? null,
                 image: variant.images?.[0] ?? null,
                 unitPrice: variant.effectivePrice ?? variant.sellingPrice,
                 basePrice: variant.sellingPrice,

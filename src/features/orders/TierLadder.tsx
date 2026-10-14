@@ -5,7 +5,7 @@ import { Layers } from "lucide-react-native";
 
 import { useTheme } from "@/theme";
 import { AppText } from "@/ui";
-import { formatINR } from "@/utils/format";
+import { formatPrice } from "@/utils/format";
 
 export interface TierRung {
     minQuantity: number;
@@ -64,13 +64,13 @@ export function TierLadder({ basePrice, tiers, quantity, variant = "chips", styl
 
     return (
         <View style={[styles.wrap, style]}>
-            <View style={styles.header}>
-                <Layers size={12} color={t.colors.accentDk} />
-                <AppText variant="overline" color="accentDk">
-                    {tr("shopOrder.tier.title")}
-                </AppText>
-            </View>
             <View style={styles.chips}>
+                <View style={styles.header}>
+                    <Layers size={12} color={t.colors.accentDk} />
+                    <AppText variant="overline" color="accentDk">
+                        {tr("shopOrder.tier.title")}
+                    </AppText>
+                </View>
                 {rungs.map((r) => (
                     <View
                         key={r.key}
@@ -86,14 +86,14 @@ export function TierLadder({ basePrice, tiers, quantity, variant = "chips", styl
                             {r.label}
                         </AppText>
                         <AppText variant="label" color={r.on ? "accentLt" : "primary"}>
-                            {formatINR(r.price)}
+                            {formatPrice(r.price)}
                         </AppText>
                     </View>
                 ))}
             </View>
             {variant === "detail" && next ? (
                 <AppText variant="caption" color="accentDk" style={styles.nudge}>
-                    {tr("shopOrder.tier.nudge", { more: next.minQuantity - quantity, price: formatINR(next.unitPrice) })}
+                    {tr("shopOrder.tier.nudge", { more: next.minQuantity - quantity, price: formatPrice(next.unitPrice) })}
                 </AppText>
             ) : null}
             {variant === "detail" && active && !next ? (
@@ -106,15 +106,15 @@ export function TierLadder({ basePrice, tiers, quantity, variant = "chips", styl
 }
 
 const styles = StyleSheet.create({
-    wrap: { marginTop: 6, gap: 4 },
-    header: { flexDirection: "row", alignItems: "center", gap: 4 },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    wrap: { marginTop: 2, gap: 2 },
+    header: { flexDirection: "row", alignItems: "center", gap: 4, marginRight: 2 },
+    chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 5 },
     chip: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 5,
-        paddingHorizontal: 8,
-        height: 26,
+        gap: 4,
+        paddingHorizontal: 7,
+        height: 22,
         borderRadius: 999,
         borderWidth: 1,
     },

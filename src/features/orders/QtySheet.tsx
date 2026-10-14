@@ -2,18 +2,25 @@ import React, { useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
-import { Boxes, Hash, X } from "lucide-react-native";
+import { X } from "lucide-react-native";
 
 import type { CatalogUnit } from "@/api";
 import { useTheme } from "@/theme";
-import { AppText, Button, Field, useKeyboardHeight } from "@/ui";
-import { formatINR } from "@/utils/format";
+import { AppText, Button, useKeyboardHeight } from "@/ui";
+import { formatPrice } from "@/utils/format";
 import { packBreakdown } from "./CartContext";
+import { HoldStepper } from "./HoldStepper";
+import { PriceBlock } from "./PriceBlock";
 import { TierLadder, activeTier, type TierRung } from "./TierLadder";
+import { VariantSpecs } from "./VariantSpecs";
 
 export interface QtySheetTarget {
     title: string;
     subtitle?: string;
+    /** Variant / unit / weight, shown labelled under the title. */
+    specs?: { variantName?: string | null; unit?: string | null; weight?: string | null };
+    /** Printed MRP per base unit — shown beside the price so the owner sees the saving. */
+    mrp?: number;
     /** Current BASE quantity in the cart. */
     quantity: number;
     /** Sellable packs, base first (from `sellableUnits`). */
@@ -132,15 +139,15 @@ export function QtySheet({ visible, target, onClose, onApply }: Props) {
                 <View style={[styles.sheet, { backgroundColor: t.colors.surface }]}>
                     <View style={styles.handle} />
                     <View style={styles.header}>
-                        <View style={styles.flex}>
-                            <AppText variant="h2" numberOfLines={2}>
-                                {target.title}
-                            </AppText>
+                        <View style={[styles.flex, styles.headText]}>
+                            <AppText variant="h2">{target.title}</AppText>
                             {target.subtitle ? (
                                 <AppText variant="caption" muted>
                                     {target.subtitle}
                                 </AppText>
                             ) : null}
+                            {target.specs ? <VariantSpecs size="sm" {...target.specs} /> : null}
+                            {target.mrp != null ? <PriceBlock size="sm" price={unit} mrp={target.mrp} unit={base?.name ?? target.specs?.unit} /> : null}
                         </View>
                         <Pressable onPress={onClose} hitSlop={10} style={[styles.closeBtn, { backgroundColor: t.colors.subtle }]}>
                             <X size={20} color={t.colors.ink500} />
@@ -170,20 +177,23 @@ export function QtySheet({ visible, target, onClose, onApply }: Props) {
                             ))}
                         </View>
 
-                        {/* Count */}
-                        <Field
-                            label={chosen ? tr("shopOrder.qty.howManyPacks", { name: chosen.name }) : tr("shopOrder.qty.howMany")}
-                            leftIcon={chosen ? <Boxes size={20} color={t.colors.ink500} /> : <Hash size={20} color={t.colors.ink500} />}
-                            keyboardType="number-pad"
-                            value={count}
-                            onChangeText={(v) => setCount(v.replace(/[^0-9]/g, "").slice(0, 6))}
-                            placeholder="0"
-                            returnKeyType="done"
-                            onSubmitEditing={apply}
-                            selectTextOnFocus
-                            autoFocus
-                            containerStyle={styles.field}
-                        />
+                        {/* Count: big −/+ with hold-to-accelerate — no keyboard, for packs and loose units alike. */}
+                        <View style={styles.field}>
+                            <AppText variant="label" color="ink700" style={styles.label}>
+                                {chosen ? tr("shopOrder.qty.howManyPacks", { name: chosen.name }) : tr("shopOrder.qty.howManyUnits", { name: base?.name ?? tr("shopOrder.qty.units") })}
+                            </AppText>
+                            <HoldStepper
+                                value={n}
+                                max={maxCount}
+                                onChange={(v) => setCount(String(v))}
+                                testID="qty-count"
+                                caption={
+                                    chosen
+                                        ? tr("shopOrder.qty.packMath", { count: n, name: chosen.name, factor: factor, total: baseQty, unit: base?.name ?? tr("shopOrder.qty.units") })
+                                        : tr("shopOrder.qty.holdHint")
+                                }
+                            />
+                        </View>
                         <View style={styles.chips}>
                             {QUICK_ADDS.filter((q) => maxCount == null || n < maxCount).map((q) => (
                                 <Pressable key={q} onPress={() => bump(q)} style={[styles.quick, { backgroundColor: t.colors.tertiary, borderColor: t.colors.secondary }]}>
@@ -225,10 +235,10 @@ export function QtySheet({ visible, target, onClose, onApply }: Props) {
                             ) : null}
                             <View style={styles.summaryRow}>
                                 <AppText variant="body" muted>
-                                    {tr("shopOrder.qty.lineTotal", { price: formatINR(unit) })}
+                                    {tr("shopOrder.qty.lineTotal", { price: formatPrice(unit) })}
                                 </AppText>
                                 <AppText variant="h2" color="primary">
-                                    {formatINR(unit * baseQty)}
+                                    {formatPrice(unit * baseQty)}
                                 </AppText>
                             </View>
                             <TierLadder basePrice={target.basePrice} tiers={target.tiers} quantity={baseQty} variant="detail" />
@@ -289,6 +299,7 @@ const styles = StyleSheet.create({
     scroll: { flexGrow: 0, flexShrink: 1 },
     handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "#E5E7EB", marginBottom: 14 },
     header: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 14 },
+    headText: { gap: 6 },
     closeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
     label: { marginBottom: 8 },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },

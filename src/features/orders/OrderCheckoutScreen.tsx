@@ -2,25 +2,28 @@ import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Switch, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
-import { Building2, CheckCircle2, MessageSquare, Tag, Trash2, Truck, UserRound, WifiOff } from "lucide-react-native";
+import { Building2, CheckCircle2, ChevronDown, ChevronUp, MessageSquare, Plus, Smartphone, Tag, Truck, UserRound, WifiOff } from "lucide-react-native";
 
 import { isApiError, type PlaceOrderResult } from "@/api";
 import { useIsOnline } from "@/offline";
 import { useTheme } from "@/theme";
 import { AppText, Button, Card, Divider, EmptyState, Field, Header, InlineBanner, Screen } from "@/ui";
-import { formatINR, prettyPhone } from "@/utils/format";
+import { formatPrice, prettyPhone } from "@/utils/format";
 import type { RootStackScreenProps } from "@/navigation/types";
-import { lineUnitPrice, packBreakdown, useCart, type CartLine } from "./CartContext";
+import { lineUnitPrice, packNoteFor, quantityLimit, useCart, type CartLine } from "./CartContext";
+import { CheckoutLine } from "./CheckoutLine";
 import { QtySheet, type QtySheetTarget } from "./QtySheet";
 import { useOnboardingDetail } from "@/features/queries";
 import { useOrderPreview, usePlaceOrder } from "./hooks";
-import { QtyStepper } from "./QtyStepper";
-import { TierLadder } from "./TierLadder";
 
 /**
  * Review the cart, see the server's exact pricing (tier prices, delivery, coupon), choose
  * whether to SMS the owner a prepay link, and place the COD order. On success the cart is
  * cleared and the agent lands back on the store with the order listed.
+ *
+ * Layout, top to bottom: items (the part the agent reads out to the owner), bill, then one
+ * "options" card where coupon / note / GST / payment link stay folded until needed. The
+ * sticky footer carries the total and the place button.
  */
 export function OrderCheckoutScreen({ route, navigation }: RootStackScreenProps<"OrderCheckout">) {
     const { target, title } = route.params;
@@ -31,8 +34,10 @@ export function OrderCheckoutScreen({ route, navigation }: RootStackScreenProps<
     const cart = useCart();
     const online = useIsOnline();
     const [coupon, setCoupon] = useState("");
+    const [couponOpen, setCouponOpen] = useState(false);
     const [sendLink, setSendLink] = useState(false);
     const [notes, setNotes] = useState("");
+    const [notesOpen, setNotesOpen] = useState(false);
     const [placed, setPlaced] = useState<PlaceOrderResult | null>(null);
     const [sheetLine, setSheetLine] = useState<CartLine | null>(null);
 
@@ -97,7 +102,24 @@ export function OrderCheckoutScreen({ route, navigation }: RootStackScreenProps<
     const previewError = preview.error && isApiError(preview.error) ? preview.error.message : null;
     const p = preview.data;
     const belowMin = p ? !p.meetsMinimum : false;
+    // Everything the owner pays less than printed MRP: list discount + bulk rungs + coupon.
+    const totalSaving = p ? Math.max(0, p.itemsMrpTotal - p.itemsTotal) + (p.discount > 0 ? p.discount : 0) : 0;
     const canPlace = online && items.length > 0 && !place.isPending && !preview.isError && !belowMin && gstReady;
+    const blocker: string | null = !online
+        ? tr("shopOrder.offline")
+        : belowMin && p
+          ? tr("shopOrder.belowMin", { amount: formatPrice(p.minOrderAmount) })
+          : !gstReady
+            ? tr("shopOrder.gst.incomplete")
+            : previewError
+              ? previewError
+              : null;
+    const unitCount = cart.lines.reduce((n, l) => n + l.quantity, 0);
+    const grand = p ? formatPrice(p.grandTotal) : formatPrice(cart.estimate);
+    const couponApplied = p?.coupon?.applied ? p.coupon.discount : null;
+    const couponError = coupon.trim() && p?.coupon && !p.coupon.applied ? (p.coupon.message ?? tr("shopOrder.couponInvalid")) : undefined;
+    const showCoupon = couponOpen || coupon.length > 0;
+    const showNotes = notesOpen || notes.length > 0;
 
     if (placed) {
         const o = placed.order;
@@ -109,7 +131,7 @@ export function OrderCheckoutScreen({ route, navigation }: RootStackScreenProps<
                         {placed.idempotentReplay ? tr("shopOrder.alreadyPlacedTitle") : tr("shopOrder.placedTitle")}
                     </AppText>
                     <AppText variant="display" color="primary">
-                        {formatINR(o.total)}
+                        {formatPrice(o.total)}
                     </AppText>
                     <AppText variant="body" muted align="center">
                         {tr("shopOrder.placedSub", { number: o.orderNumber, shop: shopName })}
@@ -151,191 +173,225 @@ export function OrderCheckoutScreen({ route, navigation }: RootStackScreenProps<
     }
 
     return (
-        <Screen scroll padded={false} contentContainerStyle={styles.content}>
-            <View style={styles.px}>
-                <Header title={tr("shopOrder.checkoutTitle")} subtitle={shopName} onBack={() => navigation.goBack()} />
-                {target.kind === "customer" ? (
-                    <InlineBanner
-                        tone="info"
-                        icon={<UserRound size={16} color="#1E40AF" />}
-                        text={tr("phoneOrder.forCustomer", { name: target.customerName ?? shopName, phone: prettyPhone(target.phone) })}
-                        style={styles.banner}
-                    />
-                ) : null}
-                {!online ? <InlineBanner tone="offline" icon={<WifiOff size={16} color={t.colors.white} />} text={tr("shopOrder.offline")} style={styles.banner} /> : null}
-            </View>
-
-            {cart.lines.length === 0 ? (
-                <EmptyState title={tr("shopOrder.cartEmpty")} actionLabel={tr("shopOrder.backToCatalog")} onAction={() => navigation.goBack()} />
-            ) : (
+        <Screen padded={false}>
+            <Screen scroll padded={false} edges={[]} contentContainerStyle={styles.content}>
                 <View style={styles.px}>
-                    <Card padded={false} style={styles.card}>
-                        {cart.lines.map((l, i) => {
-                            const priced = p?.items.find((x) => x.variantId === l.variantId);
-                            const unit = priced?.unitPrice ?? lineUnitPrice(l);
-                            const tiers = priced?.tiers ?? l.tiers;
-                            const breakdown = packBreakdown(l.quantity, l.units);
-                            return (
-                                <View key={l.variantId}>
-                                    {i > 0 ? <Divider /> : null}
-                                    <View style={styles.line}>
-                                        <View style={styles.flex}>
-                                            <AppText variant="title" numberOfLines={2}>
-                                                {l.productName}
-                                            </AppText>
-                                            <AppText variant="caption" muted numberOfLines={1}>
-                                                {[l.variantName, l.unit].filter(Boolean).join(" · ")} · {formatINR(unit)}
-                                                {priced?.hasTierDiscount ? `  ${tr("shopOrder.tierApplied")}` : ""}
-                                            </AppText>
-                                            {breakdown && breakdown.length > 0 ? (
-                                                <AppText variant="caption" color="accentDk">
-                                                    {breakdown.map((b) => `${b.count} × ${b.unit.name}`).join(" + ")}
-                                                </AppText>
-                                            ) : null}
-                                            <AppText variant="bodyStrong" style={styles.lineTotal}>
-                                                {formatINR(priced?.lineTotal ?? unit * l.quantity)}
-                                            </AppText>
-                                            <TierLadder basePrice={priced?.basePrice ?? l.basePrice} tiers={tiers} quantity={l.quantity} variant="detail" />
-                                        </View>
-                                        <View style={styles.lineRight}>
-                                            <QtyStepper value={l.quantity} max={l.maxQuantityPerOrder} onChange={(n) => cart.setLineQuantity(l.variantId, n, null)} onPressValue={() => setSheetLine(l)} />
-                                            <Pressable onPress={() => cart.setLineQuantity(l.variantId, 0)} hitSlop={8} style={styles.trash} accessibilityLabel={tr("common.remove")}>
-                                                <Trash2 size={16} color={t.colors.ink400} />
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                </View>
-                            );
-                        })}
-                    </Card>
-
-                    <Button title={tr("shopOrder.addMore")} variant="ghost" size="md" onPress={() => navigation.goBack()} style={styles.addMore} />
-
-                    <Field
-                        label={tr("shopOrder.couponLabel")}
-                        optional
-                        leftIcon={<Tag size={20} color={t.colors.ink500} />}
-                        placeholder={tr("shopOrder.couponPlaceholder")}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        value={coupon}
-                        onChangeText={setCoupon}
-                        error={p?.coupon && !p.coupon.applied ? p.coupon.message ?? tr("shopOrder.couponInvalid") : undefined}
-                        helper={p?.coupon?.applied ? tr("shopOrder.couponApplied", { amount: formatINR(p.coupon.discount) }) : undefined}
-                        containerStyle={styles.field}
-                    />
-
-                    <Field
-                        label={tr("shopOrder.notesLabel")}
-                        optional
-                        placeholder={tr("shopOrder.notesPlaceholder")}
-                        value={notes}
-                        onChangeText={setNotes}
-                        multiline
-                        containerStyle={styles.field}
-                    />
-
-                    <Card style={styles.card}>
-                        <View style={styles.switchRow}>
-                            <View style={[styles.flex, styles.switchText]}>
-                                <AppText variant="title">{tr("shopOrder.gst.title")}</AppText>
-                                <AppText variant="caption" muted>
-                                    {target.kind === "store" ? tr("shopOrder.gst.sub") : tr("phoneOrder.gstSub")}
-                                </AppText>
-                            </View>
-                            <Switch value={gstOn} onValueChange={setGstOn} trackColor={{ true: t.colors.accent, false: t.colors.border }} thumbColor={t.colors.white} />
-                        </View>
-                        {gstOn ? (
-                            <View style={styles.gstFields}>
-                                <Field
-                                    label={tr("shopOrder.gst.gstin")}
-                                    leftIcon={<Building2 size={20} color={t.colors.ink500} />}
-                                    placeholder="06ABCDE1234F1Z5"
-                                    autoCapitalize="characters"
-                                    autoCorrect={false}
-                                    value={gstin}
-                                    onChangeText={(v) => { setGstTouched(true); setGstin(v); }}
-                                    error={gstin.length > 0 && !gstinLooksValid ? tr("shopOrder.gst.gstinInvalid") : undefined}
-                                    helper={gstinLooksValid && !gstinClean.startsWith("06") ? tr("shopOrder.gst.haryanaOnly") : undefined}
-                                    containerStyle={styles.field}
-                                />
-                                <Field
-                                    label={tr("shopOrder.gst.legalName")}
-                                    placeholder={tr("shopOrder.gst.legalNamePlaceholder")}
-                                    value={legalName}
-                                    onChangeText={(v) => { setGstTouched(true); setLegalName(v); }}
-                                    error={legalName.length > 0 && legalName.trim().length < 3 ? tr("shopOrder.gst.legalNameShort") : undefined}
-                                    containerStyle={styles.field}
-                                />
-                                <Field
-                                    label={tr("shopOrder.gst.tradeName")}
-                                    optional
-                                    value={tradeName}
-                                    onChangeText={(v) => { setGstTouched(true); setTradeName(v); }}
-                                    containerStyle={styles.fieldLast}
-                                />
-                            </View>
-                        ) : null}
-                    </Card>
-
-                    <Card style={styles.card}>
-                        <View style={styles.switchRow}>
-                            <View style={[styles.flex, styles.switchText]}>
-                                <AppText variant="title">{tr("shopOrder.sendLinkTitle")}</AppText>
-                                <AppText variant="caption" muted>
-                                    {tr("shopOrder.sendLinkSub")}
-                                </AppText>
-                            </View>
-                            <Switch value={sendLink} onValueChange={setSendLink} trackColor={{ true: t.colors.accent, false: t.colors.border }} thumbColor={t.colors.white} />
-                        </View>
-                    </Card>
-
-                    <Card style={styles.card}>
-                        <TotalRow label={tr("shopOrder.subtotal")} value={p ? formatINR(p.itemsTotal) : "—"} />
-                        {p && p.tierSavings > 0 ? <TotalRow label={tr("shopOrder.tierSavings")} value={`− ${formatINR(p.tierSavings)}`} tone="accentDk" /> : null}
-                        {p && p.discount > 0 ? <TotalRow label={tr("shopOrder.couponDiscount")} value={`− ${formatINR(p.discount)}`} tone="accentDk" /> : null}
-                        <TotalRow
-                            label={tr("shopOrder.delivery")}
-                            value={p ? (p.freeDeliveryApplied || p.deliveryFee === 0 ? tr("shopOrder.free") : formatINR(p.deliveryFee)) : "—"}
-                            icon={<Truck size={14} color={t.colors.ink500} />}
+                    <Header title={tr("shopOrder.checkoutTitle")} subtitle={shopName} onBack={() => navigation.goBack()} />
+                    {target.kind === "customer" ? (
+                        <InlineBanner
+                            tone="info"
+                            icon={<UserRound size={16} color="#1E40AF" />}
+                            text={tr("phoneOrder.forCustomer", { name: target.customerName ?? shopName, phone: prettyPhone(target.phone) })}
+                            style={styles.banner}
                         />
-                        <Divider style={styles.totalDivider} />
-                        <View style={styles.totalRow}>
-                            <AppText variant="h2">{tr("shopOrder.total")}</AppText>
-                            <AppText variant="h1" color="primary">
-                                {p ? formatINR(p.grandTotal) : formatINR(cart.estimate)}
+                    ) : null}
+                    {!online ? <InlineBanner tone="offline" icon={<WifiOff size={16} color={t.colors.white} />} text={tr("shopOrder.offline")} style={styles.banner} /> : null}
+                </View>
+
+                {cart.lines.length === 0 ? (
+                    <EmptyState title={tr("shopOrder.cartEmpty")} actionLabel={tr("shopOrder.backToCatalog")} onAction={() => navigation.goBack()} />
+                ) : (
+                    <View style={styles.px}>
+                        {/* ── Items ─────────────────────────────────────────── */}
+                        <Card padded={false} style={styles.card}>
+                            <View style={styles.cardHead}>
+                                <AppText variant="subtitle">
+                                    {tr("shopOrder.itemsCount", { count: cart.lines.length })}
+                                    <AppText variant="caption" muted>
+                                        {"  ·  " + tr("shopOrder.qty.unitsTotal", { count: unitCount })}
+                                    </AppText>
+                                </AppText>
+                                <Pressable onPress={() => navigation.goBack()} hitSlop={8} style={styles.addMore} accessibilityRole="button" accessibilityLabel={tr("shopOrder.addMore")}>
+                                    <Plus size={14} color={t.colors.accentDk} />
+                                    <AppText variant="label" color="accentDk">
+                                        {tr("shopOrder.addMoreShort")}
+                                    </AppText>
+                                </Pressable>
+                            </View>
+                            {cart.lines.map((l, i) => {
+                                const priced = p?.items.find((x) => x.variantId === l.variantId);
+                                const unit = priced?.unitPrice ?? lineUnitPrice(l);
+                                return (
+                                    <CheckoutLine
+                                        key={l.variantId}
+                                        first={i === 0}
+                                        line={l}
+                                        unitPrice={unit}
+                                        mrp={priced?.mrp ?? l.mrp}
+                                        basePrice={priced?.basePrice ?? l.basePrice}
+                                        tiers={priced?.tiers ?? l.tiers}
+                                        lineTotal={priced?.lineTotal ?? unit * l.quantity}
+                                        hasTierDiscount={Boolean(priced?.hasTierDiscount)}
+                                        limit={quantityLimit(l)}
+                                        onChange={(q) => cart.setLineQuantity(l.variantId, q, packNoteFor(q, l.units))}
+                                        onPressQuantity={() => setSheetLine(l)}
+                                        onRemove={() => cart.setLineQuantity(l.variantId, 0)}
+                                    />
+                                );
+                            })}
+                        </Card>
+
+                        {/* ── Bill ──────────────────────────────────────────── */}
+                        <Card padded={false} style={styles.card}>
+                            <View style={styles.bill}>
+                                {p && p.itemsMrpTotal > p.itemsTotal ? <BillRow label={tr("shopOrder.price.mrpTotal")} value={formatPrice(p.itemsMrpTotal)} strike /> : null}
+                                <BillRow label={tr("shopOrder.subtotal")} value={p ? formatPrice(p.itemsTotal) : "—"} />
+                                {p && p.tierSavings > 0 ? <BillRow label={tr("shopOrder.tierSavings")} value={`− ${formatPrice(p.tierSavings)}`} tone="accentDk" /> : null}
+                                {p && p.discount > 0 ? <BillRow label={tr("shopOrder.couponDiscount")} value={`− ${formatPrice(p.discount)}`} tone="accentDk" /> : null}
+                                <BillRow
+                                    label={tr("shopOrder.delivery")}
+                                    value={p ? (p.freeDeliveryApplied || p.deliveryFee === 0 ? tr("shopOrder.free") : formatPrice(p.deliveryFee)) : "—"}
+                                    icon={<Truck size={13} color={t.colors.ink500} />}
+                                    tone={p && (p.freeDeliveryApplied || p.deliveryFee === 0) ? "accentDk" : undefined}
+                                />
+                                <Divider style={styles.billDivider} />
+                                <View style={styles.totalRow}>
+                                    <AppText variant="title">{tr("shopOrder.total")}</AppText>
+                                    <AppText variant="h2" color="primary">
+                                        {grand}
+                                    </AppText>
+                                </View>
+                                {totalSaving > 0 ? (
+                                    <View style={[styles.saveRow, { backgroundColor: t.colors.tertiary }]}>
+                                        <AppText variant="label" color="primary">
+                                            {tr("shopOrder.price.youSave", { amount: formatPrice(totalSaving) })}
+                                        </AppText>
+                                    </View>
+                                ) : null}
+                                {belowMin && p ? (
+                                    <InlineBanner tone="warning" text={tr("shopOrder.belowMin", { amount: formatPrice(p.minOrderAmount) })} style={styles.bannerTop} />
+                                ) : null}
+                                {previewError ? <InlineBanner tone="error" text={previewError} style={styles.bannerTop} /> : null}
+                            </View>
+                        </Card>
+
+                        {/* ── Options: folded rows so the common path stays short ── */}
+                        <Card padded={false} style={styles.card}>
+                            <OptionRow
+                                icon={<Tag size={18} color={t.colors.ink700} />}
+                                title={tr("shopOrder.couponLabel")}
+                                value={couponApplied != null ? tr("shopOrder.couponApplied", { amount: formatPrice(couponApplied) }) : coupon.trim() ? coupon.trim().toUpperCase() : undefined}
+                                valueTone={couponApplied != null ? "accentDk" : couponError ? "error" : undefined}
+                                open={showCoupon}
+                                onPress={() => setCouponOpen((v) => !v)}
+                            />
+                            {showCoupon ? (
+                                <View style={styles.optionBody}>
+                                    <Field
+                                        placeholder={tr("shopOrder.couponPlaceholder")}
+                                        autoCapitalize="characters"
+                                        autoCorrect={false}
+                                        autoFocus={couponOpen && coupon.length === 0}
+                                        value={coupon}
+                                        onChangeText={setCoupon}
+                                        error={couponError}
+                                        containerStyle={styles.fieldLast}
+                                    />
+                                </View>
+                            ) : null}
+                            <Divider />
+
+                            <OptionRow
+                                icon={<MessageSquare size={18} color={t.colors.ink700} />}
+                                title={tr("shopOrder.notesLabel")}
+                                value={notes.trim() ? notes.trim() : undefined}
+                                open={showNotes}
+                                onPress={() => setNotesOpen((v) => !v)}
+                            />
+                            {showNotes ? (
+                                <View style={styles.optionBody}>
+                                    <Field placeholder={tr("shopOrder.notesPlaceholder")} autoFocus={notesOpen && notes.length === 0} value={notes} onChangeText={setNotes} multiline containerStyle={styles.fieldLast} />
+                                </View>
+                            ) : null}
+                            <Divider />
+
+                            <OptionRow
+                                icon={<Building2 size={18} color={t.colors.ink700} />}
+                                title={tr("shopOrder.gst.title")}
+                                sub={gstOn ? (target.kind === "store" ? tr("shopOrder.gst.sub") : tr("phoneOrder.gstSub")) : undefined}
+                                right={<Switch value={gstOn} onValueChange={setGstOn} trackColor={{ true: t.colors.accent, false: t.colors.border }} thumbColor={t.colors.white} />}
+                            />
+                            {gstOn ? (
+                                <View style={styles.optionBody}>
+                                    <Field
+                                        label={tr("shopOrder.gst.gstin")}
+                                        placeholder="06ABCDE1234F1Z5"
+                                        autoCapitalize="characters"
+                                        autoCorrect={false}
+                                        value={gstin}
+                                        onChangeText={(v) => {
+                                            setGstTouched(true);
+                                            setGstin(v);
+                                        }}
+                                        error={gstin.length > 0 && !gstinLooksValid ? tr("shopOrder.gst.gstinInvalid") : undefined}
+                                        helper={gstinLooksValid && !gstinClean.startsWith("06") ? tr("shopOrder.gst.haryanaOnly") : undefined}
+                                        containerStyle={styles.field}
+                                    />
+                                    <Field
+                                        label={tr("shopOrder.gst.legalName")}
+                                        placeholder={tr("shopOrder.gst.legalNamePlaceholder")}
+                                        value={legalName}
+                                        onChangeText={(v) => {
+                                            setGstTouched(true);
+                                            setLegalName(v);
+                                        }}
+                                        error={legalName.length > 0 && legalName.trim().length < 3 ? tr("shopOrder.gst.legalNameShort") : undefined}
+                                        containerStyle={styles.field}
+                                    />
+                                    <Field
+                                        label={tr("shopOrder.gst.tradeName")}
+                                        optional
+                                        value={tradeName}
+                                        onChangeText={(v) => {
+                                            setGstTouched(true);
+                                            setTradeName(v);
+                                        }}
+                                        containerStyle={styles.fieldLast}
+                                    />
+                                </View>
+                            ) : null}
+                            <Divider />
+
+                            <OptionRow
+                                icon={<Smartphone size={18} color={t.colors.ink700} />}
+                                title={tr("shopOrder.sendLinkTitle")}
+                                sub={tr("shopOrder.sendLinkSub")}
+                                right={<Switch value={sendLink} onValueChange={setSendLink} trackColor={{ true: t.colors.accent, false: t.colors.border }} thumbColor={t.colors.white} />}
+                            />
+                        </Card>
+
+                        {errorText ? <InlineBanner tone="error" text={errorText} style={styles.banner} /> : null}
+
+                        <QtySheet
+                            visible={sheetLine !== null}
+                            target={sheetLine ? lineToTarget(sheetLine) : null}
+                            onClose={() => setSheetLine(null)}
+                            onApply={(q, pack) => {
+                                if (sheetLine) cart.setLineQuantity(sheetLine.variantId, q, pack);
+                            }}
+                        />
+                    </View>
+                )}
+            </Screen>
+
+            {cart.lines.length > 0 ? (
+                <View style={[styles.footer, { backgroundColor: t.colors.surface, borderTopColor: t.colors.border }]}>
+                    <AppText variant="caption" color={blocker ? "warning" : undefined} muted={!blocker} numberOfLines={2}>
+                        {blocker ?? (preview.isFetching ? tr("shopOrder.pricing") : tr("shopOrder.codNote"))}
+                    </AppText>
+                    <View style={styles.footerRow}>
+                        <View style={styles.flex}>
+                            <AppText variant="caption" muted>
+                                {tr("shopOrder.total")}
+                            </AppText>
+                            <AppText variant="h2" color="primary">
+                                {grand}
                             </AppText>
                         </View>
-                        <AppText variant="caption" muted>
-                            {preview.isFetching ? tr("shopOrder.pricing") : tr("shopOrder.codNote")}
-                        </AppText>
-                        {belowMin && p ? (
-                            <InlineBanner tone="warning" text={tr("shopOrder.belowMin", { amount: formatINR(p.minOrderAmount) })} style={styles.bannerTop} />
-                        ) : null}
-                        {previewError ? <InlineBanner tone="error" text={previewError} style={styles.bannerTop} /> : null}
-                    </Card>
-
-                    {errorText ? <InlineBanner tone="error" text={errorText} style={styles.banner} /> : null}
-
-                    <QtySheet
-                        visible={sheetLine !== null}
-                        target={sheetLine ? lineToTarget(sheetLine) : null}
-                        onClose={() => setSheetLine(null)}
-                        onApply={(q, pack) => {
-                            if (sheetLine) cart.setLineQuantity(sheetLine.variantId, q, pack);
-                        }}
-                    />
-
-                    <Button
-                        title={tr("shopOrder.placeOrder", { amount: p ? formatINR(p.grandTotal) : formatINR(cart.estimate) })}
-                        variant="dark"
-                        onPress={submit}
-                        loading={place.isPending}
-                        disabled={!canPlace}
-                        style={styles.place}
-                    />
+                        <Button title={tr("shopOrder.placeOrderShort")} variant="dark" size="md" fullWidth={false} onPress={submit} loading={place.isPending} disabled={!canPlace} style={styles.placeBtn} />
+                    </View>
                 </View>
-            )}
+            ) : null}
         </Screen>
     );
 }
@@ -343,7 +399,8 @@ export function OrderCheckoutScreen({ route, navigation }: RootStackScreenProps<
 function lineToTarget(l: CartLine): QtySheetTarget {
     return {
         title: l.productName,
-        subtitle: [l.variantName, l.unit].filter(Boolean).join(" · ") || undefined,
+        specs: { variantName: l.variantName, unit: l.unit, weight: l.weight },
+        mrp: l.mrp,
         quantity: l.quantity,
         units: l.units,
         basePrice: l.basePrice,
@@ -354,44 +411,108 @@ function lineToTarget(l: CartLine): QtySheetTarget {
     };
 }
 
-function TotalRow({ label, value, tone, icon }: { label: string; value: string; tone?: "accentDk"; icon?: React.ReactNode }) {
+function BillRow({ label, value, tone, icon, strike }: { label: string; value: string; tone?: "accentDk"; icon?: React.ReactNode; strike?: boolean }) {
     return (
-        <View style={styles.totalLine}>
-            <View style={styles.totalLabel}>
+        <View style={styles.billLine}>
+            <View style={styles.billLabel}>
                 {icon}
-                <AppText variant="body" muted>
+                <AppText variant="caption" muted>
                     {label}
                 </AppText>
             </View>
-            <AppText variant="bodyStrong" color={tone}>
+            <AppText variant="label" color={strike ? "ink500" : (tone ?? "ink900")} style={strike ? styles.strike : undefined}>
                 {value}
             </AppText>
         </View>
     );
 }
 
+/**
+ * One folded option: icon, title, and either a chevron (tap to expand) or a control such
+ * as a Switch. A `value` shows the current state inline so a closed row still tells the
+ * agent what was set ("WELCOME50", "Coupon applied — ₹50 off").
+ */
+function OptionRow({
+    icon,
+    title,
+    sub,
+    value,
+    valueTone,
+    open,
+    onPress,
+    right,
+}: {
+    icon: React.ReactNode;
+    title: string;
+    sub?: string;
+    value?: string;
+    valueTone?: "accentDk" | "error";
+    open?: boolean;
+    onPress?: () => void;
+    right?: React.ReactNode;
+}) {
+    const t = useTheme();
+    const content = (
+        <View style={styles.optionRow}>
+            <View style={styles.optionIcon}>{icon}</View>
+            <View style={styles.flex}>
+                <AppText variant="bodyStrong">{title}</AppText>
+                {value ? (
+                    <AppText variant="caption" color={valueTone ?? "ink700"} numberOfLines={1}>
+                        {value}
+                    </AppText>
+                ) : sub ? (
+                    <AppText variant="caption" muted>
+                        {sub}
+                    </AppText>
+                ) : null}
+            </View>
+            {right ?? (open ? <ChevronUp size={18} color={t.colors.ink400} /> : <ChevronDown size={18} color={t.colors.ink400} />)}
+        </View>
+    );
+    if (!onPress) return content;
+    return (
+        <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded: open }} style={({ pressed }) => (pressed ? styles.pressed : null)}>
+            {content}
+        </Pressable>
+    );
+}
+
 const styles = StyleSheet.create({
     flex: { flex: 1 },
-    content: { paddingBottom: 40 },
+    content: { paddingBottom: 132 },
     px: { paddingHorizontal: 16 },
-    card: { marginBottom: 14 },
-    line: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14 },
-    lineTotal: { marginTop: 4 },
-    lineRight: { alignItems: "center", gap: 6 },
-    trash: { padding: 4 },
-    addMore: { marginBottom: 16 },
-    field: { marginBottom: 14 },
+    card: { marginBottom: 12 },
+    cardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: 12, paddingRight: 8, paddingVertical: 8 },
+    addMore: { flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: 6, paddingVertical: 6 },
+    bill: { paddingHorizontal: 12, paddingVertical: 8 },
+    billLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 3 },
+    billLabel: { flexDirection: "row", alignItems: "center", gap: 5 },
+    billDivider: { marginVertical: 6 },
+    totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    saveRow: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginTop: 6 },
+    strike: { textDecorationLine: "line-through" },
+    optionRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 48 },
+    optionIcon: { width: 24, alignItems: "center" },
+    optionBody: { paddingHorizontal: 12, paddingBottom: 12 },
+    pressed: { opacity: 0.7 },
+    field: { marginBottom: 10 },
     fieldLast: { marginBottom: 0 },
-    gstFields: { marginTop: 14 },
-    switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-    switchText: { gap: 2 },
-    totalLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 5 },
-    totalLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
-    totalDivider: { marginVertical: 10 },
-    totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+    footer: {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 20,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        gap: 4,
+    },
+    footerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    placeBtn: { minWidth: 160, paddingHorizontal: 20 },
     banner: { marginBottom: 12 },
-    bannerTop: { marginTop: 10 },
-    place: { marginTop: 4 },
+    bannerTop: { marginTop: 8 },
     successWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 8 },
     successTitle: { marginTop: 6 },
     creditNote: { marginTop: 8 },

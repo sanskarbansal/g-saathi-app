@@ -25,6 +25,18 @@ export function formatINR(n: number): string {
     return "₹" + formatNumber(n);
 }
 
+/**
+ * A price or order amount, always to the paisa: ₹90.00, ₹1,234.50, ₹1,20,000.00.
+ * Two decimals everywhere so columns of prices line up and a ₹0.50 difference is visible.
+ */
+export function formatPrice(n: number): string {
+    if (!Number.isFinite(n)) return "₹0.00";
+    const cents = Math.round(Math.abs(n) * 100);
+    const whole = Math.floor(cents / 100);
+    const frac = String(cents % 100).padStart(2, "0");
+    return (n < 0 ? "-" : "") + "₹" + groupIndian(String(whole)) + "." + frac;
+}
+
 /** Compact rupees for tight tiles: ₹5.0L, ₹1.2Cr, ₹12k. */
 export function compactINR(n: number): string {
     if (!Number.isFinite(n)) return "₹0";

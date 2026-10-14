@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { useTheme } from "@/theme";
 import { AppText } from "@/ui";
+import { useHoldRepeat } from "./HoldStepper";
 
 interface Props {
     value: number;
@@ -19,25 +20,27 @@ interface Props {
 
 /**
  * Field-friendly quantity control: a lime "Add" pill at zero, a −/n/+ stepper otherwise.
- * 44dp targets so it works with a thumb in bright sunlight.
+ * Compact (36dp) so a catalog row stays short, with hit-slop so the touch target still
+ * works with a thumb in bright sunlight. Hold − or + to repeat and accelerate; tap the
+ * number to open the bulk-quantity sheet.
  */
 export function QtyStepper({ value, onChange, max, disabled, onPressValue, style }: Props) {
     const t = useTheme();
     const { t: tr } = useTranslation();
-    const atMax = typeof max === "number" && max > 0 && value >= max;
+    const limit = typeof max === "number" && max > 0 ? max : null;
+    const { start, stop, atMax } = useHoldRepeat({ value, onChange, max: limit });
 
-    const bump = (delta: number) => {
+    const addOne = () => {
         if (disabled) return;
-        const next = Math.max(0, value + delta);
-        if (typeof max === "number" && max > 0 && next > max) return;
+        if (limit != null && value + 1 > limit) return;
         Haptics.selectionAsync().catch(() => {});
-        onChange(next);
+        onChange(value + 1);
     };
 
     if (value === 0) {
         return (
             <Pressable
-                onPress={() => bump(1)}
+                onPress={addOne}
                 disabled={disabled}
                 accessibilityRole="button"
                 accessibilityLabel={tr("shopOrder.add")}
@@ -53,7 +56,7 @@ export function QtyStepper({ value, onChange, max, disabled, onPressValue, style
 
     return (
         <View style={[styles.stepper, { borderColor: t.colors.accentDk, backgroundColor: t.colors.tertiary }, style]}>
-            <Pressable onPress={() => bump(-1)} hitSlop={6} style={styles.stepBtn} accessibilityLabel="−">
+            <Pressable onPressIn={() => !disabled && start(-1)} onPressOut={stop} hitSlop={{ top: 8, bottom: 8, left: 6, right: 2 }} style={styles.stepBtn} accessibilityRole="button" accessibilityLabel="−">
                 <Minus size={18} color={t.colors.primary} />
             </Pressable>
             <Pressable onPress={onPressValue} disabled={!onPressValue} hitSlop={4} accessibilityLabel={tr("shopOrder.qty.edit")}>
@@ -61,7 +64,7 @@ export function QtyStepper({ value, onChange, max, disabled, onPressValue, style
                     {value}
                 </AppText>
             </Pressable>
-            <Pressable onPress={() => bump(1)} hitSlop={6} disabled={atMax} style={styles.stepBtn} accessibilityLabel="+">
+            <Pressable onPressIn={() => !disabled && start(1)} onPressOut={stop} hitSlop={{ top: 8, bottom: 8, left: 2, right: 6 }} disabled={atMax} style={styles.stepBtn} accessibilityRole="button" accessibilityLabel="+">
                 <Plus size={18} color={atMax ? t.colors.ink400 : t.colors.primary} />
             </Pressable>
         </View>
@@ -70,7 +73,9 @@ export function QtyStepper({ value, onChange, max, disabled, onPressValue, style
 
 const styles = StyleSheet.create({
     addBtn: {
-        height: 40,
+        height: 36,
+        minWidth: 84,
+        justifyContent: "center",
         paddingHorizontal: 14,
         borderRadius: 999,
         flexDirection: "row",
@@ -78,13 +83,14 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     stepper: {
-        height: 40,
+        height: 36,
         borderRadius: 999,
         borderWidth: 1.5,
         flexDirection: "row",
         alignItems: "center",
     },
-    stepBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-    value: { minWidth: 28, textAlign: "center" },
+    // 36dp visual, with hitSlop on the buttons so the touch target still clears 44dp.
+    stepBtn: { width: 40, height: 36, alignItems: "center", justifyContent: "center" },
+    value: { minWidth: 30, textAlign: "center" },
     valueEditable: { textDecorationLine: "underline", textDecorationStyle: "dotted" },
 });

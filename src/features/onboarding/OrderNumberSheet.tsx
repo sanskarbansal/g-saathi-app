@@ -7,7 +7,7 @@ import { Hash, X, CheckCircle2 } from "lucide-react-native";
 import { isApiError, type AttributeOrderResult } from "@/api";
 import { useTheme } from "@/theme";
 import { AppText, Button, Field, useKeyboardHeight } from "@/ui";
-import { formatINR } from "@/utils/format";
+import { formatPrice } from "@/utils/format";
 import { useAttributeOrder } from "./useAttributeOrder";
 
 interface OrderNumberSheetProps {
@@ -83,7 +83,7 @@ export function OrderNumberSheet({
                                 {tr("order.verifiedTitle")}
                             </AppText>
                             <AppText variant="display" color="primary" style={styles.amount}>
-                                {formatINR(success.order.amount)}
+                                {formatPrice(success.order.amount)}
                             </AppText>
                             <AppText variant="caption" muted align="center">
                                 {tr("order.verifiedSub", { number: success.order.orderNumber })}

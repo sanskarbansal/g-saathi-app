@@ -1,33 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Image, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, Boxes, ChevronRight, Package, Search, ShoppingCart, WifiOff } from "lucide-react-native";
+import { AlertCircle, Boxes, ChevronRight, Package, Search, ShoppingCart, WifiOff, X } from "lucide-react-native";
 
 import { orderTargetKey, type CatalogProduct, type CatalogVariant } from "@/api";
 import { useIsOnline } from "@/offline";
 import { useTheme } from "@/theme";
 import { AppText, EmptyState, Field, Header, InlineBanner, Screen, Skeleton } from "@/ui";
-import { formatINR } from "@/utils/format";
+import { formatPrice } from "@/utils/format";
 import type { RootStackScreenProps } from "@/navigation/types";
-import { packBreakdown, sellableUnits, useCart } from "./CartContext";
+import { packBreakdown, packNoteFor, quantityLimit, sellableUnits, useCart } from "./CartContext";
+import { PriceBlock } from "./PriceBlock";
 import { QtySheet, type QtySheetTarget } from "./QtySheet";
 import { useCatalog, useDebounced } from "./hooks";
 import { QtyStepper } from "./QtyStepper";
-import { TierLadder } from "./TierLadder";
+import { TierLadder, activeTier } from "./TierLadder";
+import { VariantSpecs } from "./VariantSpecs";
 
-/** One sellable row = one variant (most products have exactly one). */
+/** One card = one product with every in-stock variant listed under it. */
 interface Row {
     key: string;
     product: CatalogProduct;
-    variant: CatalogVariant;
-    /** True for the 2nd+ variant of a product, so the product name isn't repeated. */
-    continuation: boolean;
+    variants: CatalogVariant[];
 }
+
+const LOW_STOCK_AT = 10;
 
 /**
  * Build a cart from the hub catalog that serves this shop. Search-first (a rep knows what
- * the kirana wants), with an inline stepper per variant and a sticky cart bar that leads
- * to checkout. Prices shown are the store owner's segment prices from the server.
+ * the kirana wants). Each product is one card: the full name on top, then every sellable
+ * variant with its variant / unit / weight spelled out, the price next to MRP, and a
+ * stepper that always sits in the same place. A sticky cart bar leads to checkout.
  */
 export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"OrderCatalog">) {
     const { target, title } = route.params;
@@ -38,6 +41,7 @@ export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"
     const online = useIsOnline();
     const [search, setSearch] = useState("");
     const [sheet, setSheet] = useState<{ product: CatalogProduct; variant: CatalogVariant; target: QtySheetTarget } | null>(null);
+    const [onlyInCart, setOnlyInCart] = useState(false);
     const debounced = useDebounced(search, 350);
     const catalog = useCatalog(target, debounced);
 
@@ -47,117 +51,168 @@ export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [targetKey, title]);
 
+    const inCartIds = useMemo(() => new Set(cart.lines.map((l) => l.variantId)), [cart.lines]);
+    // Nothing in the cart any more → drop back to the full list instead of showing an empty one.
+    useEffect(() => {
+        if (cart.lines.length === 0) setOnlyInCart(false);
+    }, [cart.lines.length]);
+
     const rows = useMemo<Row[]>(() => {
-        const products = catalog.data?.products ?? [];
         const out: Row[] = [];
-        for (const p of products) {
-            const variants = (p.variants ?? []).filter((v) => v.inStock);
-            variants.forEach((v, i) => out.push({ key: v.id, product: p, variant: v, continuation: i > 0 }));
+        for (const p of catalog.products) {
+            let variants = (p.variants ?? []).filter((v) => v.inStock);
+            if (onlyInCart) variants = variants.filter((v) => inCartIds.has(v.id));
+            if (variants.length > 0) out.push({ key: p.id, product: p, variants });
         }
         return out;
-    }, [catalog.data]);
+    }, [catalog.products, onlyInCart, inCartIds]);
+
+    const openSheet = useCallback(
+        (product: CatalogProduct, variant: CatalogVariant) => {
+            const units = sellableUnits(variant);
+            setSheet({
+                product,
+                variant,
+                target: {
+                    title: product.name,
+                    specs: { variantName: variant.name, unit: variant.unit, weight: variant.weight ?? null },
+                    mrp: variant.mrp,
+                    quantity: cart.quantityOf(variant.id),
+                    units,
+                    basePrice: variant.sellingPrice,
+                    unitPrice: variant.effectivePrice ?? variant.sellingPrice,
+                    tiers: variant.tiers ?? [],
+                    maxQuantityPerOrder: variant.maxQuantityPerOrder ?? null,
+                    baseAvailable: units.find((u) => u.isBase)?.available ?? null,
+                },
+            });
+        },
+        [cart],
+    );
 
     const renderItem = useCallback(
         ({ item }: { item: Row }) => {
-            const { product, variant } = item;
-            const price = variant.effectivePrice ?? variant.sellingPrice;
-            const showMrp = variant.mrp > price;
-            const subtitle = [variant.name, variant.weight ? `${variant.weight}${variant.unit ? " " + variant.unit : ""}` : variant.unit]
-                .filter(Boolean)
-                .join(" · ");
-            const qty = cart.quantityOf(variant.id);
-            const image = variant.images?.[0] ?? null;
-            const units = sellableUnits(variant);
-            const packs = units.filter((u) => !u.isBase);
-            const breakdown = qty > 0 ? packBreakdown(qty, units) : null;
-            const openSheet = () =>
-                setSheet({
-                    product,
-                    variant,
-                    target: {
-                        title: product.name,
-                        subtitle: subtitle || undefined,
-                        quantity: qty,
-                        units,
-                        basePrice: variant.sellingPrice,
-                        unitPrice: price,
-                        tiers: variant.tiers ?? [],
-                        maxQuantityPerOrder: variant.maxQuantityPerOrder ?? null,
-                        baseAvailable: units.find((u) => u.isBase)?.available ?? null,
-                    },
-                });
+            const { product, variants } = item;
+            const image = variants.find((v) => v.images?.[0])?.images?.[0] ?? null;
+            const meta = [product.brand?.name, product.category?.name].filter(Boolean).join(" · ");
 
             return (
-                <View style={[styles.row, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                    <View style={[styles.thumb, { backgroundColor: t.colors.subtle }]}>
-                        {image ? <Image source={{ uri: image }} style={styles.thumbImg} /> : <Package size={22} color={t.colors.ink400} />}
-                    </View>
-                    <View style={styles.rowBody}>
-                        <AppText variant="title" numberOfLines={2}>
-                            {product.name}
-                        </AppText>
-                        {subtitle ? (
-                            <AppText variant="caption" muted numberOfLines={1}>
-                                {subtitle}
-                            </AppText>
-                        ) : null}
-                        <View style={styles.priceRow}>
-                            <AppText variant="bodyStrong">{formatINR(price)}</AppText>
-                            {showMrp ? (
-                                <AppText variant="caption" muted style={styles.mrp}>
-                                    {formatINR(variant.mrp)}
+                <View style={[styles.card, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+                    {/* Product header — the name is never clipped; a long name just wraps. */}
+                    <View style={styles.cardHead}>
+                        <View style={[styles.thumb, { backgroundColor: t.colors.subtle }]}>
+                            {image ? <Image source={{ uri: image }} style={styles.thumbImg} resizeMode="cover" /> : <Package size={18} color={t.colors.ink400} />}
+                        </View>
+                        <View style={styles.flex}>
+                            <AppText variant="subtitle">{product.name}</AppText>
+                            {meta || variants.length > 1 ? (
+                                <AppText variant="caption" muted>
+                                    {[meta, variants.length > 1 ? tr("shopOrder.price.variants", { count: variants.length }) : ""].filter(Boolean).join(" · ")}
                                 </AppText>
                             ) : null}
                         </View>
-                        <TierLadder basePrice={variant.sellingPrice} tiers={variant.tiers} quantity={qty} />
-                        {packs.length > 0 ? (
-                            <View style={styles.packRow}>
-                                {packs.map((u) => (
-                                    <Pressable
-                                        key={u.id}
-                                        disabled={!online || (u.available != null && u.available <= 0)}
-                                        onPress={() => {
-                                            const next = qty + u.factorToBase;
-                                            const bd = packBreakdown(next, units);
-                                            const first = bd?.[0];
-                                            const single = bd && bd.length === 1 && first && first.unit.id === u.id ? first : null;
-                                            cart.setQuantity(product, variant, next, single ? { unitId: u.id, packQuantity: single.count } : null);
-                                        }}
-                                        style={[styles.packChip, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                                        accessibilityLabel={tr("shopOrder.qty.addPack", { name: u.name })}
-                                    >
-                                        <Boxes size={14} color={t.colors.ink700} />
-                                        <AppText variant="caption" color="ink700">
-                                            {tr("shopOrder.qty.addPack", { name: u.name })} ×{u.factorToBase}
-                                        </AppText>
-                                    </Pressable>
-                                ))}
-                            </View>
-                        ) : null}
-                        {breakdown && breakdown.length > 0 ? (
-                            <AppText variant="caption" color="accentDk">
-                                {breakdown.map((b) => `${b.count} × ${b.unit.name}`).join(" + ")}
-                            </AppText>
-                        ) : null}
                     </View>
-                    <QtyStepper
-                        value={qty}
-                        max={variant.maxQuantityPerOrder}
-                        disabled={!online}
-                        onChange={(n) => cart.setQuantity(product, variant, n, null)}
-                        onPressValue={openSheet}
-                    />
+
+                    {variants.map((variant) => {
+                        const price = variant.effectivePrice ?? variant.sellingPrice;
+                        const qty = cart.quantityOf(variant.id);
+                        const units = sellableUnits(variant);
+                        const packs = units.filter((u) => !u.isBase);
+                        const breakdown = qty > 0 ? packBreakdown(qty, units) : null;
+                        const baseAvailable = units.find((u) => u.isBase)?.available ?? null;
+                        const lowStock = baseAvailable != null && baseAvailable > 0 && baseAvailable <= LOW_STOCK_AT;
+                        // Hard ceiling for this line: the hub's per-order max (stock already folded in) and pack stock.
+                        const limit = quantityLimit({ maxQuantityPerOrder: variant.maxQuantityPerOrder, units });
+                        const atLimit = limit != null && qty >= limit;
+                        // Per-unit price at the rung this quantity has reached (what the cart estimate uses).
+                        const rung = activeTier(variant.tiers, qty);
+                        const unitNow = rung ? rung.unitPrice : price;
+
+                        return (
+                            <View
+                                key={variant.id}
+                                style={[styles.variant, { borderTopColor: t.colors.border }, qty > 0 ? styles.variantInCart : null]}
+                            >
+                                {/* Action row: specs + price/MRP on the left, stepper always on the right. */}
+                                <View style={styles.actionRow}>
+                                    <View style={[styles.flex, styles.variantInfo]}>
+                                        <VariantSpecs layout="inline" variantName={variant.name} unit={variant.unit} weight={variant.weight} />
+                                        <PriceBlock size="md" price={price} mrp={variant.mrp} unit={variant.unit} />
+                                    </View>
+                                    <QtyStepper
+                                        value={qty}
+                                        max={limit}
+                                        disabled={!online}
+                                        onChange={(n) => cart.setQuantity(product, variant, n, null)}
+                                        onPressValue={() => openSheet(product, variant)}
+                                    />
+                                </View>
+
+                                {atLimit ? (
+                                    <AppText variant="caption" color="warning">
+                                        {tr("shopOrder.qty.atCap", { max: limit, packs: "" })}
+                                    </AppText>
+                                ) : lowStock ? (
+                                    <AppText variant="caption" color="warning">
+                                        {tr("shopOrder.price.lowStock", { count: baseAvailable })}
+                                    </AppText>
+                                ) : null}
+
+                                <TierLadder basePrice={variant.sellingPrice} tiers={variant.tiers} quantity={qty} />
+
+                                {packs.length > 0 ? (
+                                    <View style={styles.packRow}>
+                                        {packs.map((u) => {
+                                            // A pack is addable only if the whole pack still fits under the limit.
+                                            const fits = limit == null || qty + u.factorToBase <= limit;
+                                            const packDisabled = !online || !fits || (u.available != null && u.available <= 0);
+                                            return (
+                                                <Pressable
+                                                    key={u.id}
+                                                    disabled={packDisabled}
+                                                    onPress={() => {
+                                                        const next = qty + u.factorToBase;
+                                                        cart.setQuantity(product, variant, next, packNoteFor(next, units));
+                                                    }}
+                                                    style={[styles.packChip, { backgroundColor: packDisabled ? t.colors.subtle : t.colors.surface, borderColor: t.colors.border }]}
+                                                    accessibilityLabel={tr("shopOrder.qty.addPack", { name: u.name })}
+                                                    accessibilityState={{ disabled: packDisabled }}
+                                                >
+                                                    <Boxes size={14} color={packDisabled ? t.colors.ink400 : t.colors.ink700} />
+                                                    <AppText variant="caption" color={packDisabled ? "ink400" : "ink700"}>
+                                                        {tr("shopOrder.qty.addPack", { name: u.name })} ×{u.factorToBase}
+                                                    </AppText>
+                                                </Pressable>
+                                            );
+                                        })}
+                                    </View>
+                                ) : null}
+
+                                {qty > 0 ? (
+                                    <AppText variant="caption" color="accentDk">
+                                        {tr("shopOrder.price.inCart", { qty, price: formatPrice(unitNow), total: formatPrice(unitNow * qty) })}
+                                        {breakdown && breakdown.length > 0 ? (
+                                            <AppText variant="caption" muted>
+                                                {"  ·  " + breakdown.map((b) => `${b.count} × ${b.unit.name}`).join(" + ")}
+                                            </AppText>
+                                        ) : null}
+                                    </AppText>
+                                ) : null}
+                            </View>
+                        );
+                    })}
                 </View>
             );
         },
-        [cart, online, t.colors, tr],
+        [cart, online, openSheet, t.colors, tr],
     );
 
     const listEmpty = catalog.isLoading ? (
         <View style={styles.pad}>
-            <Skeleton height={84} radius={16} style={styles.skel} />
-            <Skeleton height={84} radius={16} style={styles.skel} />
-            <Skeleton height={84} radius={16} style={styles.skel} />
+            <Skeleton height={104} radius={14} style={styles.skel} />
+            <Skeleton height={104} radius={14} style={styles.skel} />
+            <Skeleton height={104} radius={14} style={styles.skel} />
+            <Skeleton height={104} radius={14} style={styles.skel} />
         </View>
     ) : catalog.isError ? (
         <EmptyState
@@ -182,6 +237,13 @@ export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"
                 <Header title={target.kind === "store" ? tr("shopOrder.title") : tr("phoneOrder.title")} subtitle={title} onBack={() => navigation.goBack()} />
                 <Field
                     leftIcon={<Search size={20} color={t.colors.ink500} />}
+                    rightAccessory={
+                        search.length > 0 ? (
+                            <Pressable onPress={() => setSearch("")} hitSlop={10} accessibilityRole="button" accessibilityLabel={tr("common.clear")} style={[styles.clearBtn, { backgroundColor: t.colors.subtle }]}>
+                                <X size={16} color={t.colors.ink700} />
+                            </Pressable>
+                        ) : undefined
+                    }
                     placeholder={tr("shopOrder.searchPlaceholder")}
                     value={search}
                     onChangeText={setSearch}
@@ -190,17 +252,49 @@ export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"
                     containerStyle={styles.search}
                 />
                 {!online ? <InlineBanner tone="offline" icon={<WifiOff size={16} color={t.colors.white} />} text={tr("shopOrder.offline")} /> : null}
+                {catalog.products.length > 0 || cart.lines.length > 0 ? (
+                    <View style={styles.filterRow}>
+                        <FilterChip
+                            label={tr("shopOrder.price.products", { count: catalog.total })}
+                            on={!onlyInCart}
+                            onPress={() => setOnlyInCart(false)}
+                        />
+                        {cart.lines.length > 0 ? (
+                            <FilterChip
+                                label={`${tr("shopOrder.price.inCartFilter")} · ${cart.lines.length}`}
+                                on={onlyInCart}
+                                onPress={() => setOnlyInCart(true)}
+                            />
+                        ) : null}
+                        {catalog.isFetching && !catalog.isFetchingNextPage ? <ActivityIndicator size="small" color={t.colors.accentDk} /> : null}
+                    </View>
+                ) : null}
             </View>
 
             <FlatList
                 data={rows}
                 keyExtractor={(r) => r.key}
                 renderItem={renderItem}
+                extraData={cart.lines}
                 contentContainerStyle={[styles.list, cart.count > 0 && styles.listWithBar]}
                 ListEmptyComponent={listEmpty}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
-                initialNumToRender={12}
+                initialNumToRender={8}
+                onEndReachedThreshold={0.6}
+                onEndReached={() => {
+                    if (!onlyInCart && catalog.hasNextPage && !catalog.isFetchingNextPage) void catalog.fetchNextPage();
+                }}
+                ListFooterComponent={
+                    catalog.isFetchingNextPage ? (
+                        <View style={styles.footerLoading}>
+                            <ActivityIndicator size="small" color={t.colors.accentDk} />
+                            <AppText variant="caption" muted>
+                                {tr("shopOrder.price.loadingMore")}
+                            </AppText>
+                        </View>
+                    ) : null
+                }
             />
 
             <QtySheet
@@ -224,9 +318,10 @@ export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"
                     <View style={styles.flex}>
                         <AppText variant="label" onDark muted>
                             {tr("shopOrder.itemsInCart", { count: cart.count })}
+                            {cart.lines.length !== cart.count ? ` · ${tr("shopOrder.itemsCount", { count: cart.lines.length })}` : ""}
                         </AppText>
                         <AppText variant="title" onDark>
-                            {formatINR(cart.estimate)}
+                            {formatPrice(cart.estimate)}
                         </AppText>
                     </View>
                     <AppText variant="bodyStrong" color="accent">
@@ -239,30 +334,50 @@ export function OrderCatalogScreen({ route, navigation }: RootStackScreenProps<"
     );
 }
 
+function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+    const t = useTheme();
+    return (
+        <Pressable
+            onPress={onPress}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on }}
+            style={[styles.filterChip, { backgroundColor: on ? t.colors.primary : t.colors.surface, borderColor: on ? t.colors.primary : t.colors.border }]}
+        >
+            <AppText variant="label" color={on ? "white" : "ink700"}>
+                {label}
+            </AppText>
+        </Pressable>
+    );
+}
+
 const styles = StyleSheet.create({
     flex: { flex: 1 },
     headerWrap: { paddingHorizontal: 16 },
-    search: { marginTop: 4, marginBottom: 8 },
+    search: { marginTop: 2, marginBottom: 6 },
+    clearBtn: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+    filterRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+    filterChip: { height: 30, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, justifyContent: "center" },
+    footerLoading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
     list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
     listWithBar: { paddingBottom: 110 },
     pad: { paddingTop: 8 },
-    skel: { marginBottom: 12 },
-    row: {
-        flexDirection: "row",
-        alignItems: "flex-start",
-        gap: 12,
-        padding: 12,
-        borderRadius: 16,
+    skel: { marginBottom: 8 },
+    card: {
+        borderRadius: 14,
         borderWidth: StyleSheet.hairlineWidth,
-        marginBottom: 10,
+        marginBottom: 8,
+        overflow: "hidden",
     },
-    thumb: { width: 56, height: 56, borderRadius: 12, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-    thumbImg: { width: 56, height: 56 },
-    rowBody: { flex: 1, gap: 2 },
-    priceRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" },
-    mrp: { textDecorationLine: "line-through" },
-    packRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
-    packChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, height: 32, borderRadius: 999, borderWidth: 1 },
+    cardHead: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 8 },
+    thumb: { width: 40, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    thumbImg: { width: 40, height: 40 },
+    variant: { paddingHorizontal: 10, paddingVertical: 7, gap: 4, borderTopWidth: StyleSheet.hairlineWidth },
+    variantInfo: { gap: 2 },
+    // Soft lime wash marks a variant that is already in the cart (lime-50, under the brand tertiary).
+    variantInCart: { backgroundColor: "#F7FEE7" },
+    actionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    packRow: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+    packChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, height: 28, borderRadius: 999, borderWidth: 1 },
     cartBar: {
         position: "absolute",
         left: 16,
