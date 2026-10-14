@@ -1,3 +1,7 @@
+// Hermes has no Intl.PluralRules, and i18next v23 needs it to resolve `_one` / `_other`
+// keys — without it every `tr("…", { count })` renders the raw key path on device.
+// The polyfill only installs itself when the API is missing, so it is a no-op elsewhere.
+import "intl-pluralrules";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { getLocales } from "expo-localization";
